@@ -1,6 +1,6 @@
 #!/bin/sh
 # platform: macOS-only -- expands the shipyard release pkg with pkgutil
-# spec: .superpowers/specs/2026-10-12-longboat-design.md "Keeping Longboat current with shipyard"
+# spec: INGREDIENTS.md "The shipyard scripts digest"
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 LIST="$root/build/shipyard-scripts.list"

@@ -19,7 +19,7 @@ while IFS= read -r f; do
   sum=$(shasum -a 256 < "$f" | cut -c1-64)
   base=$(basename "$f")
   if grep -q "^$sum  " "$digest" || grep -Fxq -- "$base" "$T/names"; then
-    echo "FAIL: $f: Longboat must not carry a copy of a shipyard script (spec \"The layering\")" >&2
+    echo "FAIL: $f: Longboat must not carry a copy of a shipyard script (README.md: Longboat carries no fetching code, pins or packaging scripts of its own)" >&2
     fail=1
   fi
 done < "$T/files"

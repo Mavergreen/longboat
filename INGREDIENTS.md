@@ -6,7 +6,7 @@ Longboat is **its own upstream**: it is versioned `YYYYMMDD.N` and nothing exter
 
 | Ingredient | Pinned in | Renovate | On a bump |
 |---|---|---|---|
-| Shipyard scripts (fetching, pins, packaging, staging) | `components/shipyard/version`, with the copied scripts' digest in `components/shipyard/scripts.sha256` | ✅ | a bump repackages |
+| Shipyard scripts (fetching, pins, packaging, staging) | `components/shipyard/version`, with the copied scripts' digest in `components/shipyard/scripts.sha256` | ✅ | a bump that changes the digest of the shipped scripts releases; one that leaves it unchanged merges and publishes nothing (see below) |
 | MacOSX10.9 SDK pin | lives in shipyard's `sdk-pins.sh` | n/a here: Longboat ships shipyard's pin | follows shipyard |
 
 No upstream release notes: Longboat is its own upstream.
@@ -27,10 +27,24 @@ dispatches `release.yml` there, whose `build` is the check the bump merges on. T
 `build/shipyard-scripts.sh check`, so a stale digest cannot merge.
 
 Exit task: this is interim, until shipyard can itself recognise an ingredient bump that produces an
-identical build and cut no release for it (shipyard queue #17). When that lands, delete
-`components/shipyard/scripts.sha256`, `build/digest-bot.sh`, `.github/workflows/shipyard-digest-bot.yml`
-and the `shipyard-scripts` entry in `## Declared state`, and declare `components/shipyard/version`
-instead.
+identical build and cut no release for it. When shipyard can, delete:
+
+- `components/shipyard/scripts.sha256`;
+- `build/digest-bot.sh` and `tests/digest-bot-test.sh`;
+- `.github/workflows/shipyard-digest-bot.yml`;
+- the bot and digest invariants in `tests/workflow-invariants-test.sh` (`build_checks_the_digest`,
+  `bot_digest_job_reads_only`, `bot_push_job_follows_digest`, `no_expressions_in_run_blocks` on the bot,
+  their mutants, and `$BOT` in its file-presence loop);
+- the "committed shipyard scripts digest" step in `.github/workflows/release.yml`, which runs
+  `build/shipyard-scripts.sh check`;
+- `build/shipyard-scripts.sh check` itself, and its tests in `tests/shipyard-scripts-test.sh`;
+- the `shipyard-scripts` entry in `## Declared state`;
+
+repoint the two tests that read the committed digest at a fresh `build/shipyard-scripts.sh extract`
+of the pinned shipyard instead: `tests/no-shipyard-copies-test.sh` (its by-sha check) and
+`tests/pkg-payload-test.sh` (`test_shipped_copies_match_digest`); and declare
+`components/shipyard/version` in `## Declared state`, so the shipyard pin is an ordinary ingredient.
+`build/shipyard-scripts.sh extract` stays: packaging still copies the scripts from the pinned shipyard.
 
 ## Declared state
 
@@ -40,3 +54,4 @@ instead.
 ## Conformance deviations
 
 - scheme: Longboat is its own upstream (no upstream release to repackage), so it versions itself by date as YYYYMMDD.N with no -mavericks.N axis
+- sparkle-updater:sdk*.pkg: the SDK pkgs that `longboat install` builds on the user's Mac carry an empty manifest `appcast` and no update-check agent. An SDK's bytes never change (the pin's sha256 guarantees it) and a newer SDK is a different product, so an SDK updater could only deliver repackages to people who already have verified bytes; Longboat's own updater delivers new SDKs (new copied pins) and fixes. Reconsider if an SDK ever tracks a moving upstream

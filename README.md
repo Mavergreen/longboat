@@ -16,8 +16,19 @@ Releases carry scripts only. Apple's bytes are never published; an SDK pkg is bu
 
 ## Usage
 
-- `longboat list` shows the SDKs Longboat offers and which are installed.
-- `longboat fetch <sdk> --into DIR` fetches and verifies an SDK into `DIR` and prints the path. It works on any host.
-- `sudo longboat install <sdk>` builds a local pkg for the SDK and installs it. It needs a Mac and root.
+- `longboat list` shows the SDK versions Longboat offers and which are installed.
+- `longboat fetch <version> --into DIR` fetches and verifies an SDK into `DIR` and prints the path. It works on any host.
+- `sudo longboat install <version> [--pkg-only DIR]` builds a local pkg for the SDK and installs it, printing the installed SDK path. It needs a Mac, and root. With `--pkg-only DIR` it instead writes the pkg into `DIR` (caching the download in `DIR/cache`) and prints the pkg's path; that needs no root.
+- `longboat --help` prints the usage.
 
-For example, `sudo longboat install 10.9`.
+`<version>` is an SDK version as `longboat list` prints it. For example, `sudo longboat install 10.9`.
+
+As root, Longboat caches what it fetches under `/usr/local/mavergreen/var/longboat/`, never under `$HOME`. The cache survives Longboat upgrades, so reinstalling an SDK skips the download, and uninstalling Longboat removes it. It holds both the downloaded tarball and the SDK extracted from it (that is how shipyard's `fetch_sdk.sh` caches), so it takes roughly twice an SDK's size.
+
+## Updates
+
+Longboat itself has a Sparkle updater, like every family product, which delivers new Longboat releases: fixes, and new SDKs as shipyard learns to fetch them. The SDK products it installs have none. An SDK's bytes never change, since the pin's sha256 fixes them, and a newer SDK is a different product, so there is nothing to update.
+
+## For family products that need an SDK
+
+A product that needs an SDK at build or run time (a cross toolchain, say) declares `--requires longboat` in its pkg, and nothing more. Its installer then refuses to proceed until Longboat is installed, but it never installs Longboat or an SDK itself. A cross toolchain used without `sdk109` installed fails at its first link, with a message naming `sudo longboat install 10.9`.
