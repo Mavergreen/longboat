@@ -32,7 +32,48 @@ test_list_offers_10_9() {
 }
 
 test_list_hides_unregistered() {
-  [ -z "$(MAVERGREEN_PRODUCT_NAMES="$T/without-sdk109" sh "$LB" list)" ]
+  [ -z "$(MAVERGREEN_PRODUCT_NAMES="$T/without-sdk109" sh "$LB" list)" ] || return 1
+  cat "$T/without-sdk109" "$T/with-sdk109" > "$T/without-plus-sdk109"
+  [ "$(MAVERGREEN_PRODUCT_NAMES="$T/without-plus-sdk109" sh "$LB" list)" = "10.9 sdk109 available" ] \
+    || { echo "the same registry plus an sdk109 line must offer 10.9, or hiding proves nothing" >&2; return 1; }
+}
+
+make_broken_shipyards() {
+  mkdir -p "$T/empty-shipyard" "$T/no-product-name"
+  cp "$LONGBOAT_SHIPYARD_DIR/sdk-pins.sh" "$T/no-product-name/"
+}
+
+test_list_fails_on_broken_shipyard() {
+  make_broken_shipyards
+  for d in "$T/empty-shipyard" "$T/no-product-name"; do
+    rc=0
+    LONGBOAT_SHIPYARD_DIR="$d" sh "$LB" list >"$T/bout" 2>"$T/berr" || rc=$?
+    [ "$rc" -ne 0 ] && [ ! -s "$T/bout" ] && [ -s "$T/berr" ] \
+      || { echo "list with a broken shipyard dir $d exited $rc and said nothing on stderr" >&2; return 1; }
+  done
+  rc=0
+  MAVERGREEN_PRODUCT_NAMES="$T/no-such-registry" sh "$LB" list >"$T/bout" 2>"$T/berr" || rc=$?
+  [ "$rc" -ne 0 ] && [ ! -s "$T/bout" ] && [ -s "$T/berr" ] \
+    || { echo "list with an unreadable registry exited $rc" >&2; return 1; }
+}
+
+test_fetch_on_broken_shipyard_is_not_unknown() {
+  make_broken_shipyards
+  rc=0
+  LONGBOAT_SHIPYARD_DIR="$T/empty-shipyard" sh "$LB" fetch 10.9 --into "$T/brokenfetch" >/dev/null 2>"$T/berr" || rc=$?
+  [ "$rc" -eq 1 ] && [ -s "$T/berr" ] && [ -z "$(grep "unknown SDK" "$T/berr")" ] \
+    || { echo "a broken shipyard dir must fail as an error (1), not as an unknown SDK; got $rc: $(cat "$T/berr")" >&2; return 1; }
+}
+
+test_help_on_stdout() {
+  sh "$LB" --help >"$T/help" 2>"$T/helperr" || return 1
+  [ ! -s "$T/helperr" ] && grep -q 'install <version> \[--pkg-only DIR\]' "$T/help"
+}
+
+test_usage_error_on_stderr() {
+  rc=0
+  sh "$LB" bogus >"$T/uout" 2>"$T/uerr" || rc=$?
+  [ "$rc" -eq 2 ] && [ ! -s "$T/uout" ] && grep -q 'install <version> \[--pkg-only DIR\]' "$T/uerr"
 }
 
 test_fetch_extracts() {
@@ -81,9 +122,10 @@ test_runs_through_symlink() {
   sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" list | grep -qx '10.9 sdk109 available'
 }
 
-for t in test_list_offers_10_9 test_list_hides_unregistered test_fetch_extracts \
-    test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline test_unknown_sdk \
-    test_paths_with_spaces test_runs_through_symlink; do
+for t in test_list_offers_10_9 test_list_hides_unregistered test_list_fails_on_broken_shipyard \
+    test_fetch_on_broken_shipyard_is_not_unknown test_help_on_stdout test_usage_error_on_stderr \
+    test_fetch_extracts test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
+    test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do
   check "$t"
 done
 exit "$fail"

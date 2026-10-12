@@ -2,9 +2,9 @@
 # platform: macOS-only -- ditto stages the SDK, and the copied shipyard scripts run pkgbuild, productbuild and installer
 #   usage: . install.sh     (sourced; needs sdks.sh, fetch.sh and LONGBOAT_SHIPYARD_DIR)
 #          lb_install <version> [--pkg-only DIR]
-# spec: .superpowers/specs/2026-10-12-longboat-design.md "The CLI" -- install fetches, stages the SDK as
-#       its own product tree, builds the pkg with shipyard's copied scripts, and installs it as root;
-#       the cache is under /usr/local/mavergreen/var/longboat as root, never $HOME.
+# spec: tests/install-test.sh -- test_install_needs_root, test_home_untouched, test_pkg_only_builds_conformant_pkg:
+#       install fetches, stages the SDK as its own product tree, builds the pkg with shipyard's copied
+#       scripts, and installs it as root; the cache is under /usr/local/mavergreen/var/longboat as root, never $HOME.
 
 lb_selfdir() { cd "$(dirname "${LB_INSTALL_SH:-$0}")" && pwd; }
 
@@ -43,6 +43,7 @@ lb_install() {
   done
   [ -n "$_lb_ver" ] || { echo "usage: longboat install <version> [--pkg-only DIR]" >&2; return 2; }
   _lb_line="$(lb_lookup "$_lb_ver")" || {
+    [ $? -eq 1 ] || return 1
     echo "longboat: unknown SDK '$_lb_ver'; offered: $(lb_offered_versions)" >&2
     return 2
   }

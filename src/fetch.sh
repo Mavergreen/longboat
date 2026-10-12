@@ -1,10 +1,12 @@
 #!/bin/sh
 # platform: host-agnostic
 #   usage: . fetch.sh     (sourced; needs sdks.sh and LONGBOAT_SHIPYARD_DIR)
-#          lb_fetch <version> --into DIR   prints DIR/<sdkdir>; exit 2 on usage errors and unknown SDKs
+#          lb_fetch <version> --into DIR   prints DIR/<sdkdir>; exit 2 on usage errors and unknown SDKs,
+#                                          1 when the copied shipyard scripts fail
 
 lb_offered_versions() {
-  lb_offered | awk '{ printf "%s%s", sep, $1; sep = " " } END { print "" }'
+  _lb_all="$(lb_offered)" || return 1
+  printf '%s\n' "$_lb_all" | awk 'NF { printf "%s%s", sep, $1; sep = " " } END { print "" }'
 }
 
 lb_fetch() {
@@ -13,6 +15,7 @@ lb_fetch() {
     return 2
   }
   _lb_line="$(lb_lookup "$1")" || {
+    [ $? -eq 1 ] || return 1
     echo "longboat: unknown SDK '$1'; offered: $(lb_offered_versions)" >&2
     return 2
   }

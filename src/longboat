@@ -1,6 +1,6 @@
 #!/bin/sh
 # platform: host-agnostic
-#   usage: longboat list | fetch <version> --into DIR | install <version> | --help
+#   usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help
 set -eu
 SELF_PATH="$0"
 while [ -L "$SELF_PATH" ]; do
@@ -24,13 +24,15 @@ LB_INSTALL_SH="$LIBEXEC/install.sh"
 . "$LIBEXEC/install.sh"
 
 usage() {
-  echo "usage: longboat list | fetch <version> --into DIR | install <version> | --help" >&2
+  echo "usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help"
 }
 
 case "${1:-}" in
   list)
-    [ $# -eq 1 ] || { usage; exit 2; }
-    lb_offered | while read -r ver short arch dir; do
+    [ $# -eq 1 ] || { usage >&2; exit 2; }
+    offered="$(lb_offered)" || exit 1
+    [ -n "$offered" ] || exit 0
+    printf '%s\n' "$offered" | while read -r ver short arch dir; do
       if [ -f "${LONGBOAT_ROOT:-}/usr/local/mavergreen/$short/mavergreen.plist" ]; then
         echo "$ver $short installed"
       else
@@ -46,6 +48,6 @@ case "${1:-}" in
   --help|-h)
     usage ;;
   *)
-    usage
+    usage >&2
     exit 2 ;;
 esac
