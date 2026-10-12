@@ -59,6 +59,13 @@ no_tags_trigger() {
   done
 }
 
+tests_step_can_extract_the_pin() {
+  job "$1" build | awk '/^      - / { s = ($0 == "      - name: Tests") } s' > "$T/tests-step"
+  [ -s "$T/tests-step" ] || { echo "the build job has no step named Tests" >&2; return 1; }
+  grep -Eq '^          GH_TOKEN: \$\{\{ github\.token \}\}$' "$T/tests-step" \
+    || { echo "the Tests step needs GH_TOKEN, so install-test can extract the pinned shipyard and test install against the scripts Longboat ships" >&2; return 1; }
+}
+
 build_checks_the_digest() {
   job "$1" build | grep -Eq '^[[:space:]]*(- )?run: sh build/shipyard-scripts\.sh check[[:space:]]*$' \
     || { echo "the build job must run sh build/shipyard-scripts.sh check, so a stale digest cannot merge" >&2; return 1; }
@@ -130,6 +137,7 @@ expect every_checkout_drops_credentials "$REL"
 expect ver_step_asks_release_needed_on_push_too "$REL"
 expect no_tags_trigger "$WF"/*.yml
 expect build_checks_the_digest "$REL"
+expect tests_step_can_extract_the_pin "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_follows_digest "$BOT"
@@ -143,6 +151,8 @@ mutant tags "$REL" awk '{ print } /^  push:$/ { print "    tags: [\"*\"]" }'
 refuses "a tags: trigger" no_tags_trigger "$m"
 mutant no-digest-check "$REL" sed '/shipyard-scripts\.sh check/d'
 refuses "a build without the digest check" build_checks_the_digest "$m"
+mutant tests-no-token "$REL" awk '/^      - / { s = ($0 == "      - name: Tests") } !(s && (/GH_TOKEN/ || /^        env:$/)) { print }'
+refuses "a Tests step without GH_TOKEN" tests_step_can_extract_the_pin "$m"
 mutant default-dispatch "$REC" sed '/dispatch-field/d'
 refuses "reconcile's default local_release=true dispatch" reconcile_dispatches_a_declared_input "$m" "$REL"
 mutant digest-writes "$BOT" sed 's/^      contents: read$/      contents: write/'

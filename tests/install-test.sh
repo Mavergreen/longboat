@@ -13,8 +13,12 @@ TMPDIR="$T/tmp space"
 export TMPDIR
 
 if [ -z "${LONGBOAT_SHIPYARD_DIR:-}" ]; then
-  if (cd "$root" && sh build/shipyard-scripts.sh extract "$(cat components/shipyard/version)" "$T/shipyard") >/dev/null 2>&1; then
+  if (cd "$root" && sh build/shipyard-scripts.sh extract "$(cat components/shipyard/version)" "$T/shipyard") >/dev/null 2>"$T/extract-err"; then
     LONGBOAT_SHIPYARD_DIR="$T/shipyard"
+  elif [ -n "${CI:-}" ]; then
+    cat "$T/extract-err" >&2
+    echo "FAIL: cannot extract the pinned shipyard; in CI install must be tested against the scripts Longboat ships, never the installed shipyard (does the Tests step have GH_TOKEN?)" >&2
+    exit 1
   else
     echo "notice: cannot extract pinned shipyard offline; using installed scripts at $SHIPYARD_SCRIPTS" >&2
     LONGBOAT_SHIPYARD_DIR="$SHIPYARD_SCRIPTS"

@@ -3,6 +3,10 @@
 #   usage: build-updater.sh     prints the path of the universal longboat-updater.app
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+[ -s "$ROOT/VERSION" ] || {
+  echo "build-updater: no VERSION file; CI's ver job writes it, and without one CMake would write a -mavericks.N VERSION here" >&2
+  exit 1
+}
 MAVERICKS_ROOT="$ROOT"; export MAVERICKS_ROOT
 . "$ROOT/build/msc.sh"
 BUILD_ROOT="${MAVERICKS_BUILD_ROOT:-${TMPDIR:-/tmp}/mm-build}"

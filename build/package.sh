@@ -1,7 +1,7 @@
 #!/bin/sh
 # platform: macOS-only -- shipyard's staging and packaging scripts run pkgbuild, productbuild and PlistBuddy
 #   usage: package.sh     writes dist/longboat-<VER>.pkg and dist/build-info.txt; VER is the first line of ./VERSION
-# spec: .superpowers/specs/2026-10-12-longboat-design.md "The Longboat product" -- one pkg, 10.9.5 floor,
+# spec: shipyard SKILL.md "Install layout and identity" -- one pkg, 10.9.5 floor,
 #       the CLI in bin/, its scripts and the copied shipyard scripts in libexec/, and the updater
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,7 +46,7 @@ mkdir -p dist
 rm -f "dist/longboat-$VER.pkg"
 sh "$SHIPYARD_SCRIPTS/set_install_floor.sh" --identifier dev.mavergreen.longboat \
   --title "Longboat for Mavericks $VER" --component "$WORK/component.pkg" \
-  --out "dist/longboat-$VER.pkg" --min-os 10.9.5 --base-version "${SHIPYARD#v}" --require-scripts >&2
+  --out "dist/longboat-$VER.pkg" --min-os 10.9.5 --require-scripts >&2
 sh "$SHIPYARD_SCRIPTS/build-info.sh" dist/build-info.txt "pkg=longboat-$VER.pkg" \
   identifier=dev.mavergreen.longboat "shipyard=$SHIPYARD"
 echo "dist/longboat-$VER.pkg"
