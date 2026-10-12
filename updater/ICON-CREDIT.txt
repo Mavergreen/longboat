@@ -1,0 +1,8 @@
+Updater icon: NONE. longboat-updater ships the standard macOS application icon by explicit opt-in
+(ALLOW_GENERIC), so no artwork is embedded.
+
+Deliberate: there is no Longboat artwork yet, and a stand-in .icns would be exactly the placeholder
+the icon gate rejects.
+
+Exit: when an original Mavergreen longboat mark exists, add updater/longboat.icns, pass ICON to
+mavericks_add_updater_app, and drop ALLOW_GENERIC.
