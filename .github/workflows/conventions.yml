@@ -1,0 +1,11 @@
+name: conventions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  conventions:
+    uses: Mavergreen/shipyard/.github/workflows/family-conventions.yml@v1
