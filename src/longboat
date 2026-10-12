@@ -2,13 +2,26 @@
 # platform: host-agnostic
 #   usage: longboat list | fetch <version> --into DIR | install <version> | --help
 set -eu
-SELF="$(cd "$(dirname "$0")" && pwd)"
-LONGBOAT_SHIPYARD_DIR="${LONGBOAT_SHIPYARD_DIR:-$SELF/../libexec/longboat/shipyard}"
+SELF_PATH="$0"
+while [ -L "$SELF_PATH" ]; do
+  _l="$(readlink "$SELF_PATH")"
+  case "$_l" in
+    /*) SELF_PATH="$_l" ;;
+    *) SELF_PATH="$(dirname "$SELF_PATH")/$_l" ;;
+  esac
+done
+SELF="$(cd "$(dirname "$SELF_PATH")" && pwd)"
+if [ -d "$SELF/../libexec/longboat" ]; then
+  LIBEXEC="$(cd "$SELF/../libexec/longboat" && pwd)"
+else
+  LIBEXEC="$SELF"
+fi
+LONGBOAT_SHIPYARD_DIR="${LONGBOAT_SHIPYARD_DIR:-$LIBEXEC/shipyard}"
 export LONGBOAT_SHIPYARD_DIR
-. "$SELF/sdks.sh"
-. "$SELF/fetch.sh"
-LB_INSTALL_SH="$SELF/install.sh"
-. "$SELF/install.sh"
+. "$LIBEXEC/sdks.sh"
+. "$LIBEXEC/fetch.sh"
+LB_INSTALL_SH="$LIBEXEC/install.sh"
+. "$LIBEXEC/install.sh"
 
 usage() {
   echo "usage: longboat list | fetch <version> --into DIR | install <version> | --help" >&2

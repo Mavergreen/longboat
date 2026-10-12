@@ -18,3 +18,4 @@ No upstream release notes: Longboat is its own upstream.
 
 ## Conformance deviations
 
+- scheme: Longboat is its own upstream (no upstream release to repackage), so it versions itself by date as YYYYMMDD.N with no -mavericks.N axis

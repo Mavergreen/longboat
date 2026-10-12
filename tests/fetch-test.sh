@@ -72,9 +72,18 @@ test_paths_with_spaces() {
   [ "$out" = "$T/with space/MacOSX10.9.sdk" ] && [ -f "$out/usr/include/stdio.h" ]
 }
 
+test_runs_through_symlink() {
+  mkdir -p "$T/farm/bin" "$T/farm/longboat/bin"
+  cp "$LB" "$T/farm/longboat/bin/longboat"
+  mkdir -p "$T/farm/longboat/libexec/longboat"
+  cp "$root"/src/sdks.sh "$root"/src/fetch.sh "$root"/src/install.sh "$T/farm/longboat/libexec/longboat/"
+  ln -s ../longboat/bin/longboat "$T/farm/bin/longboat"
+  sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" list | grep -qx '10.9 sdk109 available'
+}
+
 for t in test_list_offers_10_9 test_list_hides_unregistered test_fetch_extracts \
     test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline test_unknown_sdk \
-    test_paths_with_spaces; do
+    test_paths_with_spaces test_runs_through_symlink; do
   check "$t"
 done
 exit "$fail"
