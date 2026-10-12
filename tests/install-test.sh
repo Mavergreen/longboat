@@ -62,22 +62,34 @@ test_pkg_only_builds_conformant_pkg() {
 }
 
 test_pkg_payload() {
-  built || return 1
-  files="$(pkgutil --payload-files "$T/dist/sdk109-20261012.1.pkg")" || return 1
-  printf '%s\n' "$files" | grep -qx './usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk/usr/include/stdio.h' || return 1
-  printf '%s\n' "$files" | grep -qx './usr/local/mavergreen/sdk109/mavergreen.plist' || return 1
-  stray="$(printf '%s\n' "$files" | grep -v -e '^\.$' -e '^\./usr$' -e '^\./usr/local$' \
-    -e '^\./usr/local/mavergreen$' -e '^\./usr/local/mavergreen/sdk109\(/\|$\)' \
-    -e '^\./usr/local/mavergreen/\.base\(/\|$\)' || true)"
-  [ -z "$stray" ] || { echo "$stray" >&2; return 1; }
+  built || { echo "test_pkg_payload: the package was not built" >&2; return 1; }
+  pkg="$T/dist/sdk109-20261012.1.pkg"
   rm -rf "$T/expanded" "$T/payload"
-  pkgutil --expand "$T/dist/sdk109-20261012.1.pkg" "$T/expanded" || return 1
+  pkgutil --expand "$pkg" "$T/expanded" || { echo "test_pkg_payload: pkgutil cannot expand $pkg" >&2; return 1; }
+  comp="$(grep -l 'dev\.mavergreen\.longboat\.sdk109' "$T"/expanded/*.pkg/PackageInfo | head -1)"
+  [ -n "$comp" ] || { echo "test_pkg_payload: no component PackageInfo names dev.mavergreen.longboat.sdk109" >&2; return 1; }
   mkdir "$T/payload"
-  (cd "$T/payload" && gzip -dc "$T/expanded/component.pkg/Payload" | cpio -id 2>/dev/null)
+  gzip -dc "$(dirname "$comp")/Payload" > "$T/payload.cpio" \
+    || { echo "test_pkg_payload: cannot decompress the sdk109 component's payload" >&2; return 1; }
+  # platform: modern pkgutil --payload-files lists only a product archive's first component (the base), so
+  #           the sdk109 component's payload is listed from its own cpio.
+  files="$(cpio -it < "$T/payload.cpio" 2>/dev/null)" \
+    || { echo "test_pkg_payload: cannot list the sdk109 component's payload" >&2; return 1; }
+  printf '%s\n' "$files" | grep -qx './usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk/usr/include/stdio.h' \
+    || { echo "test_pkg_payload: payload lacks the SDK's stdio.h" >&2; return 1; }
+  printf '%s\n' "$files" | grep -qx './usr/local/mavergreen/sdk109/mavergreen.plist' \
+    || { echo "test_pkg_payload: payload lacks sdk109/mavergreen.plist" >&2; return 1; }
+  stray="$(printf '%s\n' "$files" | grep -v -e '^\.$' -e '^\./usr$' -e '^\./usr/local$' \
+    -e '^\./usr/local/mavergreen$' -e '^\./usr/local/mavergreen/sdk109\(/\|$\)' || true)"
+  [ -z "$stray" ] || { echo "test_pkg_payload: stray paths outside sdk109 in its component:" >&2; echo "$stray" >&2; return 1; }
+  ( cd "$T/payload" && cpio -id ./usr/local/mavergreen/sdk109/mavergreen.plist < "$T/payload.cpio" 2>/dev/null ) \
+    || { echo "test_pkg_payload: cannot extract the manifest" >&2; return 1; }
   plist="$T/payload/usr/local/mavergreen/sdk109/mavergreen.plist"
-  [ -f "$plist" ] || return 1
-  /usr/libexec/PlistBuddy -c 'Print :appcast' "$plist" >/dev/null 2>&1 || return 1
-  [ -z "$(/usr/libexec/PlistBuddy -c 'Print :appcast' "$plist")" ]
+  [ -f "$plist" ] || { echo "test_pkg_payload: manifest was not extracted" >&2; return 1; }
+  /usr/libexec/PlistBuddy -c 'Print :appcast' "$plist" >/dev/null 2>&1 \
+    || { echo "test_pkg_payload: manifest has no appcast key" >&2; return 1; }
+  [ -z "$(/usr/libexec/PlistBuddy -c 'Print :appcast' "$plist")" ] \
+    || { echo "test_pkg_payload: manifest appcast is not empty" >&2; return 1; }
 }
 
 test_home_untouched() {
