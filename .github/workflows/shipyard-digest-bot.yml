@@ -1,0 +1,74 @@
+name: shipyard-digest-bot
+
+# spec: INGREDIENTS.md "The shipyard scripts digest" -- the digest job reads shipyard's bytes with
+#       contents: read only; the push job touches none of them, commits the checked digest and
+#       dispatches release.yml, since a GITHUB_TOKEN push starts no workflow
+
+on:
+  push:
+    branches: ['renovate/**']
+
+permissions: {}
+
+concurrency:
+  group: shipyard-digest-bot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  digest:
+    runs-on: macos-26
+    permissions:
+      contents: read
+    outputs:
+      stale: ${{ steps.fill.outputs.stale }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: The digest of the shipyard scripts longboat ships, if the pinned shipyard moved it
+        id: fill
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          digest="$(sh build/digest-bot.sh fill)"
+          if [ -n "$digest" ]; then
+            printf '%s\n' "$digest" > "$RUNNER_TEMP/scripts.sha256"
+            echo "stale=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.fill.outputs.stale == 'yes'
+        uses: actions/upload-artifact@v7
+        with:
+          name: shipyard-scripts-digest
+          path: ${{ runner.temp }}/scripts.sha256
+
+  push:
+    needs: digest
+    if: needs.digest.outputs.stale == 'yes'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: shipyard-scripts-digest
+          path: ${{ runner.temp }}/digest
+
+      - name: Commit the digest to the branch, then run release.yml on its new head
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          applied="$(sh build/digest-bot.sh apply "$RUNNER_TEMP/digest/scripts.sha256")"
+          [ "$applied" = changed ] || { echo "components/shipyard/scripts.sha256 already holds it"; exit 0; }
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m 'chore(shipyard): the digest of the shipyard scripts longboat ships' \
+            components/shipyard/scripts.sha256
+          git push origin "HEAD:refs/heads/$BRANCH"
+          gh workflow run release.yml --ref "$BRANCH"

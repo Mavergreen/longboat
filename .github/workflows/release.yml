@@ -1,0 +1,177 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      repackage:
+        description: "Publish a packaging-only .N+1 even though this declared state is released"
+        type: boolean
+        default: false
+      reconcile:
+        description: "Set by the nightly reconcile backstop"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# spec: shipyard SKILL.md "Release workflow" -- a run that can publish is alone in its group
+concurrency:
+  group: >-
+    release-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ver:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.ver }}
+      publish: ${{ steps.ver.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      # spec: INGREDIENTS.md "Declared state" -- the shipyard scripts digest is declared state, so a push
+      #       to main publishes exactly when release-needed.sh finds no release carrying it
+      - name: Version (YYYYMMDD.N) + publish decision
+        id: ver
+        env:
+          REPACKAGE: ${{ inputs.repackage }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          base="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
+          maxn=0
+          for t in $(git tag --list "$base.*"); do
+            n="${t##*.}"
+            case "$n" in ''|*[!0-9]*) : ;; *) [ "$n" -gt "$maxn" ] && maxn="$n" ;; esac
+          done
+          ver="$base.$((maxn + 1))"
+          pub=no
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$GITHUB_EVENT_NAME" = push ]; then
+              if [ "$REPACKAGE" = true ]; then
+                pub=yes
+              else
+                digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
+                answer="$(sh "$SHIPYARD_SCRIPTS/release-needed.sh" --digest "$digest" --version "$ver")"
+                echo "release-needed: $answer"
+                if [ "$answer" = PUBLISH ]; then pub=yes; fi
+              fi
+            fi
+          fi
+          printf '%s\n' "$ver" > VERSION
+          { echo "ver=$ver"; echo "publish=$pub"; } >> "$GITHUB_OUTPUT"
+          echo "version=$ver publish=$pub"
+
+  build:
+    needs: ver
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - name: Pin the version the ver job resolved
+        run: printf '%s\n' "${{ needs.ver.outputs.version }}" > VERSION
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - name: The committed shipyard scripts digest is the pinned shipyard's
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh build/shipyard-scripts.sh check
+      - name: Build the universal updater
+        run: sh build/build-updater.sh
+      - name: Package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh build/package.sh
+      - name: Tests
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-longboat
+          path: |
+            dist/*.pkg
+            dist/build-info.txt
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  collect:
+    needs: [ver, build]
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - uses: actions/download-artifact@v8
+        with: { pattern: dist-*, merge-multiple: true, path: dist }
+      - name: Ingredient pins are well declared
+        run: sh "$SHIPYARD_SCRIPTS/check-ingredient-pins.sh"
+      - name: Release notes
+        run: |
+          set -eu
+          V="${{ needs.ver.outputs.version }}"
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" --tag "$V" --version "$V" \
+            --product Longboat --min-os 10.9.5 --out dist/RELEASE_NOTES.md
+      - name: Record the declared state in the notes
+        run: |
+          set -eu
+          digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
+          sh "$SHIPYARD_SCRIPTS/release-state-record.sh" --notes-file dist/RELEASE_NOTES.md --digest "$digest"
+      - name: Sign the pkg and write its feed
+        if: needs.ver.outputs.publish == 'yes'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY is not visible to this repo"; exit 1; }
+          V="${{ needs.ver.outputs.version }}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/$V"
+          sh "$SHIPYARD_SCRIPTS/sign_and_appcast.sh" --product longboat --feed-dir dist \
+            --channel-title "Longboat for Mavericks" --version "$V" --pkg-url "$base/longboat-$V.pkg" \
+            --notes-file dist/RELEASE_NOTES.md --pkg "dist/longboat-$V.pkg" --min-os 10.9.5
+      - name: Unsigned stand-in feeds (never published)
+        if: needs.ver.outputs.publish != 'yes'
+        run: sh "$SHIPYARD_SCRIPTS/stand-in-feeds.sh" dist "${{ needs.ver.outputs.version }}"
+      - name: Artifact conformance
+        run: |
+          set -eu
+          facts="$(sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" dist "${{ needs.ver.outputs.version }}")"
+          printf '%s\n' "$facts" | sh "$SHIPYARD_SCRIPTS/check-artifact-conformance.sh"
+      - name: The feed is an upgrade on its line
+        if: needs.ver.outputs.publish == 'yes'
+        run: |
+          set -eu
+          sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast dist/longboat.xml \
+            --version "${{ needs.ver.outputs.version }}" --tag-glob '[0-9]*.[0-9]*'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mavergreen-longboat
+          path: |
+            dist/*.pkg
+            dist/build-info.txt
+            dist/RELEASE_NOTES.md
+            dist/*.xml
+
+  scan:
+    needs: [ver, collect]
+    if: always() && needs.ver.outputs.publish == 'yes'
+    permissions: { actions: read, contents: read }
+    uses: Mavergreen/shipyard/.github/workflows/scan-for-key.yml@v1
+    with: { artifact: mavergreen-longboat }
+    secrets: { SPARKLE_PRIVATE_KEY: "${{ secrets.SPARKLE_PRIVATE_KEY }}" }
+
+  publish:
+    needs: [ver, collect, scan]
+    if: needs.ver.outputs.publish == 'yes'
+    permissions: { contents: write }
+    uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
+    with: { version: "${{ needs.ver.outputs.version }}", artifact: mavergreen-longboat }
