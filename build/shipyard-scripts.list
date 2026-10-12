@@ -1,0 +1,13 @@
+fetch_sdk.sh
+sdk-pins.sh
+mavericks_fetch.sh
+stage_product.sh
+registry-lookup.sh
+product-name.sh
+product-names
+render-manifest.sh
+set_install_floor.sh
+build-base-component.sh
+build_component_pkg.sh
+mavergreen.sh
+templates/base-postinstall.sh
