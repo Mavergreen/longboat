@@ -1,34 +1,12 @@
 # Longboat
 
-**This README has not been read or edited by a human yet.** Until it has, this project cannot cut its first release.
+`longboat` fetches and installs the Mac OS X 10.9 Mavericks SDK.
 
-Longboat for Mavericks installs pinned Apple SDKs, starting with the Mac OS X 10.9 SDK, as local Mavergreen family products. It is a small POSIX `sh` command, `longboat`.
+## How to use
 
-**Disclaimer:** an unofficial community tool, not affiliated with Apple; SDKs are fetched from third-party mirrors onto the user's own machine and never redistributed.
+```sh
+longboat --help
+sudo longboat install 10.9
+```
 
-## What it does
-
-`longboat install 10.9` fetches the pinned SDK, builds a local pkg for it on your own Mac and installs it, so each SDK is an ordinary family product with its own tree, manifest and Installer receipt. The 10.9 SDK lands at `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`, which exists exactly when `sdk109` is installed. `mavergreen list` shows it and `mavergreen uninstall sdk109` removes it. Each SDK has its own product tree, so upgrading Longboat never deletes an SDK. Installing Longboat itself installs no SDK.
-
-Longboat is for anyone targeting Mavericks, whether or not they develop Mavergreen products, and does not require shipyard to be installed. It also carries no fetching code, pins or packaging scripts of its own: its package step copies them from shipyard (`fetch_sdk.sh`, `sdk-pins.sh`, `mavericks_fetch.sh` and the staging scripts), so every shipped copy is byte-identical to shipyard's. Shipyard still owns how an SDK is fetched, and Mavergreen product builds keep getting their sysroot from it. An SDK becomes available through Longboat once shipyard can fetch it, and reaches users with a Longboat release.
-
-Releases carry scripts only. Apple's bytes are never published; an SDK pkg is built on your own Mac and never leaves it.
-
-## Usage
-
-- `longboat list` shows the SDK versions Longboat offers and which are installed.
-- `longboat fetch <version> --into DIR` fetches and verifies an SDK into `DIR` and prints the path. It works on any host.
-- `sudo longboat install <version> [--pkg-only DIR]` builds a local pkg for the SDK and installs it, printing the installed SDK path. It needs a Mac, and root. With `--pkg-only DIR` it instead writes the pkg into `DIR` (caching the download in `DIR/cache`) and prints the pkg's path; that needs no root.
-- `longboat --help` prints the usage.
-
-`<version>` is an SDK version as `longboat list` prints it. For example, `sudo longboat install 10.9`.
-
-As root, Longboat caches what it fetches under `/usr/local/mavergreen/var/longboat/`, never under `$HOME`. The cache survives Longboat upgrades, so reinstalling an SDK skips the download, and uninstalling Longboat removes it. It holds both the downloaded tarball and the SDK extracted from it (that is how shipyard's `fetch_sdk.sh` caches), so it takes roughly twice an SDK's size.
-
-## Updates
-
-Longboat itself has a Sparkle updater, like every family product, which delivers new Longboat releases: fixes, and new SDKs as shipyard learns to fetch them. The SDK products it installs have none. An SDK's bytes never change, since the pin's sha256 fixes them, and a newer SDK is a different product, so there is nothing to update.
-
-## For family products that need an SDK
-
-A product that needs an SDK at build or run time (a cross toolchain, say) declares `--requires longboat` in its pkg, and nothing more. Its installer then refuses to proceed until Longboat is installed, but it never installs Longboat or an SDK itself. A cross toolchain used without `sdk109` installed fails at its first link, with a message naming `sudo longboat install 10.9`.
+A future release may handle other SDK versions.
