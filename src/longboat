@@ -7,6 +7,8 @@ LONGBOAT_SHIPYARD_DIR="${LONGBOAT_SHIPYARD_DIR:-$SELF/../libexec/longboat/shipya
 export LONGBOAT_SHIPYARD_DIR
 . "$SELF/sdks.sh"
 . "$SELF/fetch.sh"
+LB_INSTALL_SH="$SELF/install.sh"
+. "$SELF/install.sh"
 
 usage() {
   echo "usage: longboat list | fetch <version> --into DIR | install <version> | --help" >&2
@@ -26,8 +28,8 @@ case "${1:-}" in
     shift
     lb_fetch "$@" ;;
   install)
-    echo "longboat: install is not implemented yet" >&2
-    exit 1 ;;
+    shift
+    lb_install "$@" ;;
   --help|-h)
     usage ;;
   *)
