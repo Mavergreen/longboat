@@ -1,0 +1,36 @@
+#!/bin/sh
+# platform: host-agnostic
+#   usage: longboat list | fetch <version> --into DIR | install <version> | --help
+set -eu
+SELF="$(cd "$(dirname "$0")" && pwd)"
+LONGBOAT_SHIPYARD_DIR="${LONGBOAT_SHIPYARD_DIR:-$SELF/../libexec/longboat/shipyard}"
+export LONGBOAT_SHIPYARD_DIR
+. "$SELF/sdks.sh"
+. "$SELF/fetch.sh"
+
+usage() {
+  echo "usage: longboat list | fetch <version> --into DIR | install <version> | --help" >&2
+}
+
+case "${1:-}" in
+  list)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    lb_offered | while read -r ver short arch dir; do
+      if [ -f "${LONGBOAT_ROOT:-}/usr/local/mavergreen/$short/mavergreen.plist" ]; then
+        echo "$ver $short installed"
+      else
+        echo "$ver $short available"
+      fi
+    done ;;
+  fetch)
+    shift
+    lb_fetch "$@" ;;
+  install)
+    echo "longboat: install is not implemented yet" >&2
+    exit 1 ;;
+  --help|-h)
+    usage ;;
+  *)
+    usage
+    exit 2 ;;
+esac
