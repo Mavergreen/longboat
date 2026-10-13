@@ -77,14 +77,13 @@ alive() {
   return 1
 }
 
-# spec: src/install.sh lb_install -- its traps around the work dir are the caller's traps a step must keep.
-interrupt_step() {
-  # platform: a background job starts with INT ignored, and a signal ignored at entry cannot be trapped,
-  #           so neither the caller's trap nor the step's would ever run; perl puts INT back first.
-  # platform: the interrupted shell is not the pty's session leader: a leader's exit hangs up the
-  #           terminal, and that SIGHUP would kill a leaked clock and hide it. The leader outlives it.
-  rm -f "$T/child" "$T/workdir" "$T/leader"
+# spec: src/install.sh lb_install, src/longboat -- its traps around the work dir are the caller's traps a
+#       step must keep, and the CLI runs it under set -eu.
+step_script() {
+  rm -rf "$T/child" "$T/workdir" "$T/leader" "$T/tmp"
+  mkdir "$T/tmp"
   cat > "$T/interrupted.sh" <<'SH'
+set -eu
 echo $$ > "$2/child"
 . "$1/src/progress.sh"
 d="$(mktemp -d "${TMPDIR:-/tmp}/longboat-work.XXXXXX")"
@@ -94,7 +93,21 @@ trap 'exit 1' HUP INT TERM
 lb_progress_init 1
 SH
   printf '%s\n' "$1" >> "$T/interrupted.sh"
-  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV or die "exec: $!"' script -q /dev/null \
+}
+
+# spec: src/install.sh lb_install, src/progress.sh lb_step_run -- the work dir and the step dir are both
+#       in TMPDIR; nothing may stay.
+left_behind() {
+  [ -z "$(ls -A "$T/tmp")" ] || { echo "left in TMPDIR: $(ls -A "$T/tmp")" >&2; rm -rf "$T/tmp"/*; return 1; }
+}
+
+interrupt_step() {
+  # platform: a background job starts with INT ignored, and a signal ignored at entry cannot be trapped,
+  #           so neither the caller's trap nor the step's would ever run; perl puts INT back first.
+  # platform: the interrupted shell is not the pty's session leader: a leader's exit hangs up the
+  #           terminal, and that SIGHUP would kill a leaked clock and hide it. The leader outlives it.
+  step_script "$1"
+  TMPDIR="$T/tmp" perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV or die "exec: $!"' script -q /dev/null \
     sh -c 'echo $$ > "$2/leader"; sh "$2/interrupted.sh" "$1" "$2"; sleep 10' sh "$root" "$T" \
     </dev/null >"$T/tty" 2>&1 &
   spid=$!
@@ -116,9 +129,39 @@ SH
   leader="$(cat "$T/leader")"
   kill -s KILL $kids "$child" $(descendants "$leader") "$leader" "$spid" 2>/dev/null || :
   wait "$spid" 2>/dev/null || :
-  d="$(cat "$T/workdir")"
-  [ ! -e "$d" ] || { echo "the caller's EXIT trap did not remove its work dir $d" >&2; rm -rf "$d"; rc=1; }
+  left_behind || rc=1
   return "$rc"
+}
+
+# platform: here the step's shell is the pty's session leader, so killing script(1) hangs up the
+#           terminal under it, as closing a Terminal window or dropping ssh does: the shell gets SIGHUP
+#           and every write to the terminal fails from then on.
+hangup_step() {
+  step_script "$1"
+  TMPDIR="$T/tmp" script -q /dev/null sh "$T/interrupted.sh" "$root" "$T" </dev/null >"$T/tty" 2>&1 &
+  spid=$!
+  i=0
+  while [ ! -s "$T/workdir" ] && [ "$i" -lt 50 ]; do sleep 1; i=$((i + 1)); done
+  sleep 2
+  child="$(cat "$T/child")"
+  kids="$(descendants "$child")"
+  [ -n "$kids" ] || { echo "the step started nothing" >&2; return 1; }
+  kill -s KILL "$spid"
+  wait "$spid" 2>/dev/null || :
+  i=0
+  while alive "$kids $child" && [ "$i" -lt 5 ]; do sleep 1; i=$((i + 1)); done
+  rc=0
+  if alive "$kids $child"; then
+    echo "still alive after the hangup: $(ps -o pid,ppid,command -p "$(echo $kids $child | tr ' ' ',')" 2>/dev/null)" >&2
+    rc=1
+  fi
+  kill -s KILL $kids "$child" 2>/dev/null || :
+  left_behind || rc=1
+  return "$rc"
+}
+
+test_hangup_leaves_nothing_behind() {
+  hangup_step 'lb_step_run 1 x sleep 33'
 }
 
 test_interrupt_leaves_no_clock() {
@@ -134,7 +177,8 @@ test_interrupt_stops_a_scripts_children() {
 }
 
 for t in test_clock_ticks test_clock_line_fits_79_columns test_installer_bar_redraws test_interrupt_leaves_no_clock \
-    test_interrupt_stops_a_functions_children test_interrupt_stops_a_scripts_children; do
+    test_interrupt_stops_a_functions_children test_interrupt_stops_a_scripts_children \
+    test_hangup_leaves_nothing_behind; do
   check "$t"
 done
 exit "$fail"

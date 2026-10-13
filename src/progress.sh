@@ -109,7 +109,7 @@ _lb_step_stop() {
   if [ -n "${_lb_step_pid:-}" ]; then
     _lb_tree_kill "$_lb_step_pid"
   fi
-  lb_step_end "$_lb_step_n" "$_lb_step_label" "$1"
+  lb_step_end "$_lb_step_n" "$_lb_step_label" "$1" || :
   [ "$1" -eq 0 ] || [ -z "$2" ] || cat "$_lb_step_dir/out" >&2 || :
   trap - EXIT HUP INT TERM
   . "$_lb_step_dir/traps"
