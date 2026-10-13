@@ -117,9 +117,11 @@ test_fetch_stdout_is_only_the_path_at_a_terminal() {
   # platform: BSD script(1) gives the command a terminal on stderr; GNU script has other flags.
   script -q /dev/null sh -c 'p="$(sh "$1" fetch 10.9 --into "$2")"; printf "PATH=%s\n" "$p"' sh "$LB" "$T/tty" >"$T/ttyout" 2>&1 || true
   tr -d '\r' < "$T/ttyout" > "$T/ttyout.clean"
-  grep -qx "PATH=$T/tty/MacOSX10.9.sdk" "$T/ttyout.clean" \
-    && grep -q '\[1/1\] fetching the 10\.9 SDK' "$T/ttyout.clean" \
-    || { cat "$T/ttyout.clean" >&2; return 1; }
+  grep -qx "PATH=$T/tty/MacOSX10.9.sdk" "$T/ttyout.clean" || { cat "$T/ttyout.clean" >&2; return 1; }
+  # spec: src/progress.sh lb_step_end -- only at a terminal is the step's line redrawn with a CR; in a log
+  #       script(1)'s CR comes just before a newline, never before the next line's text.
+  grep -q "$(printf '\r')\\[1/1\\] fetching the 10\\.9 SDK: done (" "$T/ttyout" \
+    || { echo "stderr was a terminal but the step was not redrawn:" >&2; cat -v "$T/ttyout" >&2; return 1; }
 }
 
 test_unknown_sdk() {
