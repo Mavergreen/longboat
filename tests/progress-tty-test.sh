@@ -78,11 +78,12 @@ alive() {
 }
 
 # spec: src/install.sh lb_install -- its traps around the work dir are the caller's traps a step must keep.
-test_interrupt_leaves_no_clock() {
+interrupt_step() {
   # platform: a background job starts with INT ignored, and a signal ignored at entry cannot be trapped,
   #           so neither the caller's trap nor the step's would ever run; perl puts INT back first.
   # platform: the interrupted shell is not the pty's session leader: a leader's exit hangs up the
   #           terminal, and that SIGHUP would kill a leaked clock and hide it. The leader outlives it.
+  rm -f "$T/child" "$T/workdir" "$T/leader"
   cat > "$T/interrupted.sh" <<'SH'
 echo $$ > "$2/child"
 . "$1/src/progress.sh"
@@ -91,8 +92,8 @@ echo "$d" > "$2/workdir"
 trap 'rm -rf "$d"' EXIT
 trap 'exit 1' HUP INT TERM
 lb_progress_init 1
-lb_step_run 1 x sleep 30
 SH
+  printf '%s\n' "$1" >> "$T/interrupted.sh"
   perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV or die "exec: $!"' script -q /dev/null \
     sh -c 'echo $$ > "$2/leader"; sh "$2/interrupted.sh" "$1" "$2"; sleep 10' sh "$root" "$T" \
     </dev/null >"$T/tty" 2>&1 &
@@ -108,7 +109,7 @@ SH
   while alive "$kids $child" && [ "$i" -lt 3 ]; do sleep 1; i=$((i + 1)); done
   rc=0
   if alive "$kids"; then
-    echo "still alive after INT: $(ps -o pid,command -p "$(echo $kids | tr ' ' ',')" 2>/dev/null)" >&2
+    echo "still alive after INT: $(ps -o pid,ppid,command -p "$(echo $kids | tr ' ' ',')" 2>/dev/null)" >&2
     rc=1
   fi
   [ "$(tail -c 1 "$T/tty" | od -An -c | tr -d ' ')" = '\n' ] || { echo "the step's line was left unfinished: $(cat "$T/tty")" >&2; rc=1; }
@@ -120,7 +121,20 @@ SH
   return "$rc"
 }
 
-for t in test_clock_ticks test_clock_line_fits_79_columns test_installer_bar_redraws test_interrupt_leaves_no_clock; do
+test_interrupt_leaves_no_clock() {
+  interrupt_step 'lb_step_run 1 x sleep 30'
+}
+
+test_interrupt_stops_a_functions_children() {
+  interrupt_step 'f() { sleep 31; sleep 1; }; lb_step_run 1 x f'
+}
+
+test_interrupt_stops_a_scripts_children() {
+  interrupt_step "lb_step_run 1 x sh -c 'sleep 32; :'"
+}
+
+for t in test_clock_ticks test_clock_line_fits_79_columns test_installer_bar_redraws test_interrupt_leaves_no_clock \
+    test_interrupt_stops_a_functions_children test_interrupt_stops_a_scripts_children; do
   check "$t"
 done
 exit "$fail"

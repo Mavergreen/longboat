@@ -76,18 +76,38 @@ _lb_step_clock() {
   done
 }
 
+# spec: tests/progress-tty-test.sh test_interrupt_stops_a_functions_children,
+#       test_interrupt_stops_a_scripts_children -- a step's command starts with INT ignored (it is an
+#       async list) and so does everything it starts, so a terminal's Ctrl-C reaches none of it.
+#       Killing only the top would orphan the workers (ditto, pkgbuild) to write on into a work dir
+#       install is removing. The tree is stopped top down first, so nothing in it can fork or be
+#       reparented out of pgrep's sight, then terminated and continued.
+_lb_tree_freeze() {
+  kill -s STOP "$1" 2>/dev/null || return 0
+  echo "$1"
+  for _lb_kid in $(pgrep -P "$1" 2>/dev/null); do
+    _lb_tree_freeze "$_lb_kid"
+  done
+}
+
+_lb_tree_kill() {
+  _lb_tree="$(_lb_tree_freeze "$1")"
+  [ -n "$_lb_tree" ] || return 0
+  kill -s TERM $_lb_tree 2>/dev/null || :
+  kill -s CONT $_lb_tree 2>/dev/null || :
+  wait "$1" 2>/dev/null || :
+}
+
 # spec: tests/progress-tty-test.sh test_interrupt_leaves_no_clock -- stops the clock and the command,
 #       finishes the line, and gives the caller back its own traps. Every path out of a step comes
 #       through here once; the second call finds nothing to do.
 _lb_step_stop() {
   [ -n "${_lb_step_dir:-}" ] || return 0
   if [ -n "${_lb_step_clock:-}" ]; then
-    kill "$_lb_step_clock" 2>/dev/null || :
-    wait "$_lb_step_clock" 2>/dev/null || :
+    _lb_tree_kill "$_lb_step_clock"
   fi
   if [ -n "${_lb_step_pid:-}" ]; then
-    kill "$_lb_step_pid" 2>/dev/null || :
-    wait "$_lb_step_pid" 2>/dev/null || :
+    _lb_tree_kill "$_lb_step_pid"
   fi
   lb_step_end "$_lb_step_n" "$_lb_step_label" "$1"
   [ "$1" -eq 0 ] || [ -z "$2" ] || cat "$_lb_step_dir/out" >&2 || :
