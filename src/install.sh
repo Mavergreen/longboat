@@ -115,8 +115,7 @@ lb_install_build() {
   lb_step_start 5 installing
   { installer -verboseR -pkg "$_w/$_short-$_lbver.pkg" -target /; echo $? > "$_w/installer.rc"; } 2>&1 \
     | lb_installer_bar 5 installing
-  _irc=1
-  read -r _irc < "$_w/installer.rc" 2>/dev/null || _irc=1
+  read -r _irc 2>/dev/null < "$_w/installer.rc" || _irc=1
   case "$_irc" in 0) ;; *) _irc=1 ;; esac
   lb_step_end 5 installing "$_irc"
   [ "$_irc" -eq 0 ] || return 1

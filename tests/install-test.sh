@@ -121,6 +121,43 @@ test_failing_step_shows_its_output() {
   [ -z "$(ls -A "$T/tmp space")" ]
 }
 
+# platform: PATH shims stand in for id and installer, so the real install path runs without root and never touches /.
+make_installer_shims() {
+  rm -rf "$T/shims" "$T/shimlog"
+  mkdir -p "$T/shims"
+  printf '#!/bin/sh\n[ "${1:-}" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$T/shims/id"
+  {
+    printf '#!/bin/sh\necho "$@" >> "%s"\n' "$T/shimlog"
+    printf 'echo "installer: Package name is shim"\necho "installer:%%50.000000"\n'
+    if [ "$1" = fail ]; then
+      printf 'echo "installer: The install failed (The Installer encountered an error)" >&2\nexit 1\n'
+    else
+      printf 'echo "installer:%%100.000000"\nexit 0\n'
+    fi
+  } > "$T/shims/installer"
+  chmod +x "$T/shims/id" "$T/shims/installer"
+}
+
+test_installer_failure_fails_install() {
+  make_installer_shims fail
+  rc=0
+  PATH="$T/shims:$PATH" sh "$LB" install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
+  [ "$rc" -ne 0 ] && [ ! -s "$T/iout" ] \
+    && grep -q '^installer: The install failed' "$T/ierr" \
+    && grep -q '^\[5/5\] installing: failed (' "$T/ierr" \
+    && [ -s "$T/shimlog" ] || { echo "rc=$rc"; cat "$T/iout" "$T/ierr" >&2; return 1; }
+  [ -z "$(ls -A "$T/tmp space")" ]
+}
+
+test_installer_success_prints_installed_path() {
+  make_installer_shims ok
+  rc=0
+  PATH="$T/shims:$PATH" sh "$LB" install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
+  [ "$rc" -eq 0 ] && [ "$(cat "$T/iout")" = /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk ] \
+    && grep -q '^\[5/5\] installing: done (' "$T/ierr" \
+    && grep -q -e '-verboseR' "$T/shimlog" && grep -q -e '-target /' "$T/shimlog" || { echo "rc=$rc"; cat "$T/iout" "$T/ierr" >&2; return 1; }
+}
+
 test_home_untouched() {
   mkdir -p "$T/home"
   rm -rf "$T/dist2"
@@ -162,6 +199,7 @@ test_missing_version_exits_2() {
 
 for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload \
     test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
+    test_installer_failure_fails_install test_installer_success_prints_installed_path \
     test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2; do
   check "$t"
 done
