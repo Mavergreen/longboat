@@ -68,11 +68,18 @@ jobs:
           { echo "ver=$ver"; echo "publish=$pub"; } >> "$GITHUB_OUTPUT"
           echo "version=$ver publish=$pub"
 
+  # platform: build is the PR's required check, and GitHub counts a SKIPPED required check as passing
+  #           (swift's PR 9 merged that way), so build runs even when ver fails, and then fails first
   build:
     needs: ver
+    if: ${{ !cancelled() }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
+      - name: The ver job succeeded
+        env:
+          VER: ${{ needs.ver.result }}
+        run: '[ "$VER" = success ] || { echo "::error::ver ended $VER, so this build has no version to build"; exit 1; }'
       - uses: actions/checkout@v7
         with: { fetch-depth: 0, persist-credentials: false }
       - uses: Mavergreen/shipyard/.github/actions/install@v1

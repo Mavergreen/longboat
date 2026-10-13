@@ -66,6 +66,15 @@ tests_step_can_extract_the_pin() {
     || { echo "the Tests step needs GH_TOKEN, so install-test can extract the pinned shipyard and test install against the scripts Longboat ships" >&2; return 1; }
 }
 
+required_check_fails_when_ver_fails() {
+  job "$1" build > "$T/build"
+  grep -qx '    if: ${{ !cancelled() }}' "$T/build" \
+    || { echo "build is the required check, and GitHub counts a skipped required check as passing: it must run even when ver fails" >&2; return 1; }
+  awk '/^      - / { n++ } n == 1' "$T/build" > "$T/first-step"
+  grep -qx '          VER: ${{ needs.ver.result }}' "$T/first-step" && grep -q '\[ "\$VER" = success \]' "$T/first-step" \
+    || { echo "build's first step must fail unless ver succeeded, so a failed ver fails the required check" >&2; return 1; }
+}
+
 build_checks_the_digest() {
   job "$1" build | grep -Eq '^[[:space:]]*(- )?run: sh build/shipyard-scripts\.sh check[[:space:]]*$' \
     || { echo "the build job must run sh build/shipyard-scripts.sh check, so a stale digest cannot merge" >&2; return 1; }
@@ -201,11 +210,21 @@ bot_digest_job_reads_only() {
     || { echo "the digest job's checkout must not persist its token" >&2; return 1; }
 }
 
-bot_push_job_follows_digest() {
-  job "$1" push | grep -qx '    needs: digest' \
+bot_push_job_pushes_as_the_app() {
+  job "$1" push > "$T/push"
+  grep -qx '    needs: digest' "$T/push" \
     || { echo "the push job must run only after the digest job" >&2; return 1; }
-  job "$1" push | grep -qx '      contents: write' \
-    || { echo "the push job needs contents: write to push the digest" >&2; return 1; }
+  grep -q 'uses: actions/create-github-app-token@' "$T/push" \
+    && grep -qx '          client-id: ${{ vars.PINS_BOT_CLIENT_ID }}' "$T/push" \
+    && grep -qx '          private-key: ${{ secrets.PINS_BOT_PRIVATE_KEY }}' "$T/push" \
+    && grep -qx '          permission-contents: write' "$T/push" \
+    || { echo "the push job must mint the pins-bot App's token: a GITHUB_TOKEN push starts no check that counts for the PR" >&2; return 1; }
+  grep -qx '          token: ${{ steps.app-token.outputs.token }}' "$T/push" \
+    || { echo "the push job's checkout must push with the App's token" >&2; return 1; }
+  ! grep -Eq '^      (contents|actions): write$' "$T/push" \
+    || { echo "the push job's GITHUB_TOKEN writes nothing: the App's token does the pushing" >&2; return 1; }
+  ! grep -q 'gh workflow run' "$T/push" \
+    || { echo "a dispatched build does not count for the PR's required check; the App's push starts the real one" >&2; return 1; }
 }
 
 no_expressions_in_run_blocks() {
@@ -258,6 +277,7 @@ expect every_checkout_drops_credentials "$REL"
 expect ver_step_asks_release_needed_on_push_too "$REL"
 expect no_tags_trigger "$WF"/*.yml
 expect build_checks_the_digest "$REL"
+expect required_check_fails_when_ver_fails "$REL"
 expect tests_step_can_extract_the_pin "$REL"
 expect linux_job_runs_repo_tests "$REL"
 expect build_makes_installmedia_before_package "$REL"
@@ -265,7 +285,7 @@ expect build_packs_the_linux_tarball "$REL"
 expect linux_job_smokes_the_tarball "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
-expect bot_push_job_follows_digest "$BOT"
+expect bot_push_job_pushes_as_the_app "$BOT"
 expect no_expressions_in_run_blocks "$BOT"
 
 mutant no-release-needed "$REL" sed 's/release-needed\.sh/release-unneeded.sh/'
@@ -287,8 +307,18 @@ refuses "a digest job with a second permission" bot_digest_job_reads_only "$m"
 mutant digest-persists "$BOT" sed '/persist-credentials: false/d'
 refuses "a digest job whose checkout keeps its token" bot_digest_job_reads_only "$m"
 mutant push-alone "$BOT" sed '/^    needs: digest$/d'
-refuses "a push job that does not wait for the digest job" bot_push_job_follows_digest "$m"
-mutant run-expr "$BOT" sed 's/"\$BRANCH"/"${{ github.ref_name }}"/g'
+refuses "a push job that does not wait for the digest job" bot_push_job_pushes_as_the_app "$m"
+mutant push-github-token "$BOT" sed 's/steps\.app-token\.outputs\.token/github.token/'
+refuses "a push job whose checkout pushes with GITHUB_TOKEN" bot_push_job_pushes_as_the_app "$m"
+mutant push-dispatch "$BOT" awk '{ print } /git push origin/ { print "          gh workflow run release.yml --ref \"$BRANCH\"" }'
+refuses "a push job that dispatches release.yml" bot_push_job_pushes_as_the_app "$m"
+mutant push-writes "$BOT" awk '{ print } /^    needs: digest$/ { print "    permissions:"; print "      contents: write" }'
+refuses "a push job whose GITHUB_TOKEN can write" bot_push_job_pushes_as_the_app "$m"
+mutant build-skips "$REL" sed '/^    if: \${{ !cancelled() }}$/d'
+refuses "a required build that is skipped when ver fails" required_check_fails_when_ver_fails "$m"
+mutant build-no-guard "$REL" sed 's/needs\.ver\.result/needs.ver.outputs.version/'
+refuses "a required build that runs on whatever ver left" required_check_fails_when_ver_fails "$m"
+mutant run-expr "$BOT" sed 's|refs/heads/\$BRANCH|refs/heads/${{ github.ref_name }}|'
 refuses "a run: block that interpolates \${{ }}" no_expressions_in_run_blocks "$m"
 mutant linux-no-tests "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  linux:" && /run-repo-tests\.sh/) { print }'
 refuses "a linux job that does not run the repo's tests" linux_job_runs_repo_tests "$m"

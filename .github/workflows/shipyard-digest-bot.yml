@@ -1,8 +1,11 @@
 name: shipyard-digest-bot
 
 # spec: INGREDIENTS.md "The shipyard scripts digest" -- the digest job reads shipyard's bytes with
-#       contents: read only; the push job touches none of them, commits the checked digest and
-#       dispatches release.yml, since a GITHUB_TOKEN push starts no workflow
+#       contents: read only; the push job touches none of them, and commits and pushes the checked
+#       digest with the pins-bot App's token
+# platform: a push made with GITHUB_TOKEN starts PR runs that wait for a person's approval, and a
+#           build it dispatches does not count for the PR's required check; an App's push starts
+#           them as Renovate's own pushes do
 
 on:
   push:
@@ -49,26 +52,35 @@ jobs:
     if: needs.digest.outputs.stale == 'yes'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: write
+      contents: read
     steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.PINS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PINS_BOT_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/download-artifact@v8
         with:
           name: shipyard-scripts-digest
           path: ${{ runner.temp }}/digest
 
-      - name: Commit the digest to the branch, then run release.yml on its new head
+      - name: Commit the digest to the branch as the App's bot
         env:
           BRANCH: ${{ github.ref_name }}
-          GH_TOKEN: ${{ github.token }}
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -eu
           applied="$(sh build/digest-bot.sh apply "$RUNNER_TEMP/digest/scripts.sha256")"
           [ "$applied" = changed ] || { echo "components/shipyard/scripts.sha256 already holds it"; exit 0; }
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+          id="$(gh api "/users/$SLUG%5Bbot%5D" --jq .id)"
+          git -c user.name="$SLUG[bot]" -c user.email="$id+$SLUG[bot]@users.noreply.github.com" \
             commit -q -m 'chore(shipyard): the digest of the shipyard scripts longboat ships' \
             components/shipyard/scripts.sha256
           git push origin "HEAD:refs/heads/$BRANCH"
-          gh workflow run release.yml --ref "$BRANCH"

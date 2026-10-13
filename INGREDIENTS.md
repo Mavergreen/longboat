@@ -26,9 +26,14 @@ that changes them moves the digest, and its merge to `main` publishes.
 
 Renovate moves the pin on a `renovate/**` branch. `.github/workflows/shipyard-digest-bot.yml` then
 recomputes the digest from the newly pinned shipyard (`build/digest-bot.sh fill`, in a job that can only
-read), commits it to the branch (`build/digest-bot.sh apply`, in a job that reads no shipyard bytes) and
-dispatches `release.yml` there, whose `build` is the check the bump merges on. That build runs
-`build/shipyard-scripts.sh check`, so a stale digest cannot merge.
+read) and commits it to the branch (`build/digest-bot.sh apply`, in a job that reads no shipyard bytes),
+pushing as the family's pins-bot GitHub App, the one swift's and recaulk's pins bots use. That push starts
+the PR's own `release.yml` run, whose `build` is the check the bump merges on, and which runs
+`build/shipyard-scripts.sh check`, so a stale digest cannot merge. The App is needed because a push made
+with `GITHUB_TOKEN` starts PR runs that wait for a person's approval, and a `release.yml` run it
+dispatches does not count for the PR's required check. The App's client ID is the org variable
+`PINS_BOT_CLIENT_ID` and its key the org secret `PINS_BOT_PRIVATE_KEY`; its only permission is
+Contents: Read and write.
 
 Exit task: this is interim, until shipyard can itself recognise an ingredient bump that produces an
 identical build and cut no release for it. When shipyard can, delete:
