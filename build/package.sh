@@ -29,7 +29,7 @@ LIBEXEC="$P/libexec/longboat"
 mkdir -p "$P/bin" "$LIBEXEC"
 cp src/longboat "$P/bin/longboat"
 chmod 755 "$P/bin/longboat"
-for f in sdks.sh fetch.sh install.sh; do
+for f in sdks.sh progress.sh fetch.sh install.sh; do
   cp "src/$f" "$LIBEXEC/$f"
 done
 printf '%s\n' "$VER" > "$LIBEXEC/VERSION"

@@ -99,6 +99,29 @@ test_fetch_reuses_cache_offline() {
   [ "$rc" -eq 0 ]
 }
 
+test_fetch_shows_its_step() {
+  rm -rf "$T/step"
+  out=$(sh "$LB" fetch 10.9 --into "$T/step" 2>"$T/steperr")
+  [ "$out" = "$T/step/MacOSX10.9.sdk" ] || return 1
+  grep -q '^\[1/1\] fetching the 10\.9 SDK\.\.\.$' "$T/steperr" \
+    && grep -q '^\[1/1\] fetching the 10\.9 SDK: done (' "$T/steperr" \
+    || { cat "$T/steperr" >&2; return 1; }
+  [ -z "$(grep "$(printf '\r')" "$T/steperr")" ] || { echo "a log must never carry a CR" >&2; return 1; }
+  sh "$LB" fetch 10.9 --into "$T/step" 2>"$T/steperr2" >/dev/null
+  grep -q '^\[1/1\] fetching the 10\.9 SDK: cached$' "$T/steperr2" || { cat "$T/steperr2" >&2; return 1; }
+}
+
+test_fetch_stdout_is_only_the_path_at_a_terminal() {
+  [ "$(uname)" = Darwin ] || { echo "skip: needs BSD script(1)" >&2; return 0; }
+  rm -rf "$T/tty"
+  # platform: BSD script(1) gives the command a terminal on stderr; GNU script has other flags.
+  script -q /dev/null sh -c 'p="$(sh "$1" fetch 10.9 --into "$2")"; printf "PATH=%s\n" "$p"' sh "$LB" "$T/tty" >"$T/ttyout" 2>&1 || true
+  tr -d '\r' < "$T/ttyout" > "$T/ttyout.clean"
+  grep -qx "PATH=$T/tty/MacOSX10.9.sdk" "$T/ttyout.clean" \
+    && grep -q '\[1/1\] fetching the 10\.9 SDK' "$T/ttyout.clean" \
+    || { cat "$T/ttyout.clean" >&2; return 1; }
+}
+
 test_unknown_sdk() {
   for v in 10.6 10.9.5 MacOSX10.9.sdk ""; do
     rc=0
@@ -117,7 +140,7 @@ test_runs_through_symlink() {
   mkdir -p "$T/farm/bin" "$T/farm/longboat/bin"
   cp "$LB" "$T/farm/longboat/bin/longboat"
   mkdir -p "$T/farm/longboat/libexec/longboat"
-  cp "$root"/src/sdks.sh "$root"/src/fetch.sh "$root"/src/install.sh "$T/farm/longboat/libexec/longboat/"
+  cp "$root"/src/sdks.sh "$root"/src/progress.sh "$root"/src/fetch.sh "$root"/src/install.sh "$T/farm/longboat/libexec/longboat/"
   ln -s ../longboat/bin/longboat "$T/farm/bin/longboat"
   sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" list | grep -qx '10.9 sdk109 available'
 }
@@ -125,7 +148,7 @@ test_runs_through_symlink() {
 for t in test_list_offers_10_9 test_list_hides_unregistered test_list_fails_on_broken_shipyard \
     test_fetch_on_broken_shipyard_is_not_unknown test_help_on_stdout test_usage_error_on_stderr \
     test_fetch_extracts test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
-    test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do
+    test_fetch_shows_its_step test_fetch_stdout_is_only_the_path_at_a_terminal test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do
   check "$t"
 done
 exit "$fail"

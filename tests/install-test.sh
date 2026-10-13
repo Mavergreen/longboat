@@ -92,6 +92,35 @@ test_pkg_payload() {
     || { echo "test_pkg_payload: manifest appcast is not empty" >&2; return 1; }
 }
 
+test_pkg_only_shows_four_steps() {
+  rm -rf "$T/sdist"
+  out="$(sh "$LB" install 10.9 --pkg-only "$T/sdist" 2>"$T/steperr")" || { cat "$T/steperr" >&2; return 1; }
+  [ "$out" = "$T/sdist/sdk109-20261012.1.pkg" ] || { echo "stdout was '$out'" >&2; return 1; }
+  prev=0
+  for s in "1 fetching the 10.9 SDK" "2 copying the SDK" "3 building the SDK pkg" "4 adding the install floor"; do
+    n="${s%% *}" label="${s#* }"
+    a="$(grep -n "^\[$n/4\] $label\.\.\.\$" "$T/steperr" | head -1 | cut -d: -f1)"
+    b="$(grep -n "^\[$n/4\] $label: done (" "$T/steperr" | head -1 | cut -d: -f1)"
+    [ -n "$a" ] && [ -n "$b" ] && [ "$a" -gt "$prev" ] && [ "$b" -gt "$a" ] \
+      || { echo "step $n: start line $a, done line $b, after line $prev" >&2; cat "$T/steperr" >&2; return 1; }
+    prev="$b"
+  done
+  ! grep -q "^\[5/" "$T/steperr" || false
+}
+
+test_failing_step_shows_its_output() {
+  rm -rf "$T/badsy" "$T/fdist2"
+  cp -R "$LONGBOAT_SHIPYARD_DIR" "$T/badsy"
+  printf 'echo boom >&2\nexit 1\n' > "$T/badsy/build_component_pkg.sh"
+  rc=0
+  LONGBOAT_SHIPYARD_DIR="$T/badsy" sh "$LB" install 10.9 --pkg-only "$T/fdist2" >/dev/null 2>"$T/steperr" || rc=$?
+  [ "$rc" -ne 0 ] || return 1
+  grep -q '^\[3/4\] building the SDK pkg: failed (' "$T/steperr" || { cat "$T/steperr" >&2; return 1; }
+  sed -n '/^\[3\/4\] building the SDK pkg: failed (/,$p' "$T/steperr" | grep -qx boom \
+    || { echo "boom did not follow the failed line" >&2; cat "$T/steperr" >&2; return 1; }
+  [ -z "$(ls -A "$T/tmp space")" ]
+}
+
 test_home_untouched() {
   mkdir -p "$T/home"
   rm -rf "$T/dist2"
@@ -132,6 +161,7 @@ test_missing_version_exits_2() {
 }
 
 for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload \
+    test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
     test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2; do
   check "$t"
 done

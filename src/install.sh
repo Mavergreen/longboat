@@ -1,6 +1,6 @@
 #!/bin/sh
 # platform: macOS-only -- ditto stages the SDK, and the copied shipyard scripts run pkgbuild, productbuild and installer
-#   usage: . install.sh     (sourced; needs sdks.sh, fetch.sh and LONGBOAT_SHIPYARD_DIR)
+#   usage: . install.sh     (sourced; needs sdks.sh, progress.sh, fetch.sh and LONGBOAT_SHIPYARD_DIR)
 #          lb_install <version> [--pkg-only DIR]
 # spec: tests/install-test.sh -- test_install_needs_root, test_home_untouched, test_pkg_only_builds_conformant_pkg:
 #       install fetches, stages the SDK as its own product tree, builds the pkg with shipyard's copied
@@ -69,6 +69,7 @@ lb_install() {
   else
     _lb_cache="${LONGBOAT_ROOT:-}/usr/local/mavergreen/var/longboat"
   fi
+  if [ -n "$_lb_pkgonly" ]; then lb_progress_init 4; else lb_progress_init 5; fi
   _lb_work="$(mktemp -d "${TMPDIR:-/tmp}/longboat-install.XXXXXX")" || return 1
   trap 'rm -rf "$_lb_work"' EXIT
   trap 'exit 1' HUP INT TERM
@@ -79,26 +80,45 @@ lb_install() {
   return "$_lb_rc"
 }
 
+lb_install_copy() {
+  mkdir -p "$2" || return 1
+  ditto --norsrc --noextattr --noacl "$1" "$2/$3"
+}
+
+lb_install_pkg() {
+  sh "$_sh/stage_product.sh" --stage "$_w/root" --product "$_short" --name "Mac OS X $_ver SDK" \
+    --version "$_lbver" --scripts-out "$_w/scripts" || return 1
+  sh "$_sh/build_component_pkg.sh" --root "$_w/root" --identifier "$_id" --version "$_lbver" \
+    --install-location / --scripts "$_w/scripts" --out "$_w/component.pkg"
+}
+
+lb_install_floor() {
+  sh "$_sh/set_install_floor.sh" --identifier "$_id" --title "Mac OS X $_ver SDK (installed by Longboat)" \
+    --component "$_w/component.pkg" --out "$_w/$_short-$_lbver.pkg" --min-os 10.9.5 \
+    --base-version "$_base" --require-scripts
+}
+
 lb_install_build() {
   _w="$1" _cache="$2" _ver="$3" _short="$4" _sdkdir="$5" _id="$6" _lbver="$7" _base="$8" _out="$9"
   _sh="$LONGBOAT_SHIPYARD_DIR"
-  _src="$(lb_fetch "$_ver" --into "$_cache")" || return 1
+  _src="$(lb_fetch_step 1 "$_ver" --into "$_cache")" || return 1
   _dest="$_w/root/usr/local/mavergreen/$_short/SDKs"
-  mkdir -p "$_dest" || return 1
-  ditto --norsrc --noextattr --noacl "$_src" "$_dest/$_sdkdir" || return 1
-  sh "$_sh/stage_product.sh" --stage "$_w/root" --product "$_short" --name "Mac OS X $_ver SDK" \
-    --version "$_lbver" --scripts-out "$_w/scripts" >&2 || return 1
-  sh "$_sh/build_component_pkg.sh" --root "$_w/root" --identifier "$_id" --version "$_lbver" \
-    --install-location / --scripts "$_w/scripts" --out "$_w/component.pkg" >&2 || return 1
-  sh "$_sh/set_install_floor.sh" --identifier "$_id" --title "Mac OS X $_ver SDK (installed by Longboat)" \
-    --component "$_w/component.pkg" --out "$_w/$_short-$_lbver.pkg" --min-os 10.9.5 \
-    --base-version "$_base" --require-scripts >&2 || return 1
+  lb_step_run 2 "copying the SDK" lb_install_copy "$_src" "$_dest" "$_sdkdir" || return 1
+  lb_step_run 3 "building the SDK pkg" lb_install_pkg || return 1
+  lb_step_run 4 "adding the install floor" lb_install_floor || return 1
   if [ -n "$_out" ]; then
     mkdir -p "$_out" || return 1
     mv "$_w/$_short-$_lbver.pkg" "$_out/" || return 1
     printf '%s/%s-%s.pkg\n' "$_out" "$_short" "$_lbver"
     return 0
   fi
-  installer -pkg "$_w/$_short-$_lbver.pkg" -target / >&2 || return 1
+  lb_step_start 5 installing
+  { installer -verboseR -pkg "$_w/$_short-$_lbver.pkg" -target /; echo $? > "$_w/installer.rc"; } 2>&1 \
+    | lb_installer_bar 5 installing
+  _irc=1
+  read -r _irc < "$_w/installer.rc" 2>/dev/null || _irc=1
+  case "$_irc" in 0) ;; *) _irc=1 ;; esac
+  lb_step_end 5 installing "$_irc"
+  [ "$_irc" -eq 0 ] || return 1
   printf '/usr/local/mavergreen/%s/SDKs/%s\n' "$_short" "$_sdkdir"
 }

@@ -18,7 +18,10 @@ else
 fi
 LONGBOAT_SHIPYARD_DIR="${LONGBOAT_SHIPYARD_DIR:-$LIBEXEC/shipyard}"
 export LONGBOAT_SHIPYARD_DIR
+MAVERGREEN_PROGRESS=1
+export MAVERGREEN_PROGRESS
 . "$LIBEXEC/sdks.sh"
+. "$LIBEXEC/progress.sh"
 . "$LIBEXEC/fetch.sh"
 LB_INSTALL_SH="$LIBEXEC/install.sh"
 . "$LIBEXEC/install.sh"
@@ -41,7 +44,8 @@ case "${1:-}" in
     done ;;
   fetch)
     shift
-    lb_fetch "$@" ;;
+    lb_progress_init 1
+    lb_fetch_step 1 "$@" ;;
   install)
     shift
     lb_install "$@" ;;
