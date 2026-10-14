@@ -120,11 +120,13 @@ jobs:
       - uses: Mavergreen/shipyard/.github/actions/install@v1
       - uses: actions/setup-go@v7
         with: { go-version-file: installmedia/go.mod, cache-dependency-path: installmedia/go.mod }
+      # platform: Ubuntu's 7zip package is 7-Zip itself (23.01 on 24.04); p7zip-full is now only a
+      #           transitional name for it, so ask for the real one
       - name: Install the HFS+ and disc image tools
         run: |
           set -eu
           sudo apt-get update
-          sudo apt-get install -y hfsprogs p7zip-full dmg2img
+          sudo apt-get install -y hfsprogs 7zip dmg2img
       - name: Tests
         env:
           LONGBOAT_GO_RACE: "1"
