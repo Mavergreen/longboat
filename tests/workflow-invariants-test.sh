@@ -84,8 +84,11 @@ linux_job_runs_repo_tests() {
     || { echo "the linux job must not need build: a macOS build failure would skip its Linux tests" >&2; return 1; }
 }
 
+# platform: the regex reaches awk through ENVIRON, not -v: -v applies string escapes first, so gawk and
+#           busybox turn "\$" and "\." into a bare "$" and "." (gawk with a warning on stderr) and the
+#           regex no longer means what it says; ENVIRON hands it over byte for byte in every awk
 step_of() {
-  awk -v re="$2" '/^      - / { n++ } n && $0 ~ re { print n; f = 1; exit } END { if (!f) print 0 }' "$1"
+  STEP_RE="$2" awk 'BEGIN { re = ENVIRON["STEP_RE"] } /^      - / { n++ } n && $0 ~ re { print n; f = 1; exit } END { if (!f) print 0 }' "$1"
 }
 
 build_makes_installmedia_before_package() {
@@ -135,7 +138,8 @@ build_packs_the_linux_tarball() {
 # spec: README.md "On Linux" -- $1 is the tarball step with its continuation lines joined, its leading
 #       blanks and its cat "$x/err" lines dropped; $2 is a command, and $3 the check that must follow it
 followed_by() {
-  awk -v c="$2" -v e="$3" 'prev == c && index($0, e) == 1 { ok = 1 } { prev = $0 } END { exit !ok }' "$1"
+  CMD="$2" CHECK="$3" awk 'BEGIN { c = ENVIRON["CMD"]; e = ENVIRON["CHECK"] }
+    prev == c && index($0, e) == 1 { ok = 1 } { prev = $0 } END { exit !ok }' "$1"
 }
 
 linux_job_smokes_the_tarball() {
