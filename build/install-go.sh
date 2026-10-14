@@ -51,7 +51,7 @@ fi
 [ "$#" -eq 1 ] || usage
 ver="$1"
 check_version "$ver"
-: "${SHIPYARD_SCRIPTS:?install-go: SHIPYARD_SCRIPTS must name shipyard's scripts (install@v1 sets it)}"
+: "${SHIPYARD_SCRIPTS:?install-go: SHIPYARD_SCRIPTS must name the shipyard scripts directory (install@v1 sets it)}"
 
 repo="$(sh "$SHIPYARD_SCRIPTS/product-name.sh" repo "$SHORT")"
 d="$(mktemp -d "${TMPDIR:-/tmp}/install-go.XXXXXX")"
