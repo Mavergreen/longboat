@@ -92,6 +92,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: sh build/package.sh
+      - name: Install the pinned Go
+        run: |
+          set -eu
+          bin="$(sh build/install-go.sh "$(tr -d '[:space:]' < components/golang/version)")"
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
       - name: Tests
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,8 +110,48 @@ jobs:
       - name: The build must not have written into the source tree
         run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
 
+  linux:
+    needs: ver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - uses: actions/setup-go@v7
+        with: { go-version-file: installmedia/go.mod, cache-dependency-path: installmedia/go.mod }
+      - name: Install the HFS+ and disc image tools
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y hfsprogs p7zip-full dmg2img
+      - name: Tests
+        env:
+          LONGBOAT_GO_RACE: "1"
+          LONGBOAT_REQUIRE_HFS_TOOLS: "1"
+          GOTOOLCHAIN: local
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+      # spec: packer-plugin-macosx .github/workflows/ci.yml (its cross-build step) and its docs/decisions/0005
+      #       -- the plugin imports installmedia and cross-builds for these six targets
+      - name: Cross-build installmedia for the plugin's targets
+        working-directory: installmedia
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+        run: |
+          set -eu
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 netbsd/amd64 netbsd/arm64; do
+            echo "go build $t"
+            GOOS="${t%/*}" GOARCH="${t#*/}" go build ./...
+          done
+      - name: staticcheck
+        working-directory: installmedia
+        env:
+          GOTOOLCHAIN: local
+        run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
+
   collect:
-    needs: [ver, build]
+    needs: [ver, build, linux]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7

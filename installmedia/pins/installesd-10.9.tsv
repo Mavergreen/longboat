@@ -1,0 +1,12 @@
+# Tab-separated: name, url, sha256, build. Copied from packer-plugin-macosx
+# assets/pins/sources.tsv on 2026-10-14, with the build the image installs.
+#
+# Apple. Mavericks 10.9.5 InstallESD.dmg, the one thing here that may not
+# come from anywhere else. lib/vendor.sh's fetch_source cannot fetch it:
+# the URL below is Apple's real one, but it answers only with an
+# AssetToken cookie obtained from osrecovery.apple.com. mavericks-installesd
+# does that handshake and checks this checksum -- the transfer is plain
+# HTTP, so the checksum is the only integrity there is. Recorded here so
+# the registry names every third-party artifact, including the one a plain
+# download cannot get.
+apple-installesd-10.9.5	http://oscdn.apple.com/content/downloads/33/62/031-10295/gho4r94w66f5v4ujm0sz7k1m0hua68i6oo/OSInstaller/InstallESD.dmg	c861fd59e82bf777496809a0d2a9b58f66691ee56738031f55874a3fe1d7c3ff	13F34

@@ -8,6 +8,10 @@ Longboat is **its own upstream**: it is versioned `YYYYMMDD.N` and nothing exter
 |---|---|---|---|
 | Shipyard scripts (fetching, pins, packaging, staging) | `components/shipyard/version`, with the copied scripts' digest in `components/shipyard/scripts.sha256` | ✅ | a bump that changes the digest of the shipped scripts releases; one that leaves it unchanged merges and publishes nothing (see below) |
 | MacOSX10.9 SDK pin | lives in shipyard's `sdk-pins.sh` | n/a here: Longboat ships shipyard's pin | follows shipyard |
+| Go toolchain (Mavergreen/golang-126's go126-cross pkg; `build/install-go.sh` puts it in place in CI through shipyard's `fetch_product_pkg.sh`) | `components/golang/version` | ✅ | releases: the pin is declared state |
+| Install-media pins (Mac OS X 10.9.5's `InstallESD.dmg`, 10.6 retail disc packages) | `installmedia/pins/*` | ❌ untrackable: frozen Apple artifacts | compensates: whole-file or package-level content pins, checked by `installmedia.Check`; a new pin is a deliberate commit, and releases |
+
+Go modules: none (`installmedia/go.mod` has no requires).
 
 No upstream release notes: Longboat is its own upstream.
 
@@ -50,6 +54,9 @@ of the pinned shipyard instead: `tests/no-shipyard-copies-test.sh` (its by-sha c
 
 - upstream: UPSTREAM_VERSION
 - shipyard-scripts: components/shipyard/scripts.sha256
+- golang: components/golang/version
+- installesd-pin: installmedia/pins/installesd-10.9.tsv
+- snowleopard-pins: installmedia/pins/snowleopard-packages.sha256
 
 ## Conformance deviations
 

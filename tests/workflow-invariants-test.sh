@@ -71,6 +71,17 @@ build_checks_the_digest() {
     || { echo "the build job must run sh build/shipyard-scripts.sh check, so a stale digest cannot merge" >&2; return 1; }
 }
 
+linux_job_runs_repo_tests() {
+  job "$1" linux > "$T/linux"
+  [ -s "$T/linux" ] || { echo "release.yml has no linux job" >&2; return 1; }
+  grep -qx '    runs-on: ubuntu-latest' "$T/linux" \
+    || { echo "the linux job must run on ubuntu-latest: it proves the host-agnostic tests and installmedia work off macOS" >&2; return 1; }
+  grep -Eq '^[[:space:]]*(- )?run: sh "\$SHIPYARD_SCRIPTS/run-repo-tests\.sh"[[:space:]]*$' "$T/linux" \
+    || { echo "the linux job must run sh \"\$SHIPYARD_SCRIPTS/run-repo-tests.sh\", or nothing tests installmedia on Linux" >&2; return 1; }
+  job "$1" collect | grep -Eq '^    needs: \[(.*, )?linux(,|\])' \
+    || { echo "collect must need the linux job, so a release waits for installmedia's Linux tests" >&2; return 1; }
+}
+
 reconcile_dispatches_a_declared_input() {
   key="$(code "$1" | sed -n 's/^[[:space:]]*dispatch-field:[[:space:]]*\([A-Za-z_-]*\)=.*/\1/p')"
   [ -n "$key" ] || key=local_release
@@ -124,6 +135,11 @@ refuses() {
   fi
 }
 
+expect_on_mutant() {
+  what=$1; shift
+  if "$@" 2>"$T/err"; then echo "ok: $1 accepts $what"; else echo "FAIL: $1 refused $what: $(cat "$T/err")" >&2; fail=1; fi
+}
+
 mutant() {
   m="$T/$1.yml"; src=$2; shift 2
   "$@" < "$src" > "$m"
@@ -138,6 +154,7 @@ expect ver_step_asks_release_needed_on_push_too "$REL"
 expect no_tags_trigger "$WF"/*.yml
 expect build_checks_the_digest "$REL"
 expect tests_step_can_extract_the_pin "$REL"
+expect linux_job_runs_repo_tests "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_follows_digest "$BOT"
@@ -165,6 +182,20 @@ mutant push-alone "$BOT" sed '/^    needs: digest$/d'
 refuses "a push job that does not wait for the digest job" bot_push_job_follows_digest "$m"
 mutant run-expr "$BOT" sed 's/"\$BRANCH"/"${{ github.ref_name }}"/g'
 refuses "a run: block that interpolates \${{ }}" no_expressions_in_run_blocks "$m"
+mutant linux-no-tests "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  linux:" && /run-repo-tests\.sh/) { print }'
+refuses "a linux job that does not run the repo's tests" linux_job_runs_repo_tests "$m"
+mutant collect-skips-linux "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [ver, build]/'
+refuses "a collect that does not wait for the linux job" linux_job_runs_repo_tests "$m"
+mutant collect-linux-first "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [linux, ver, build]/'
+expect_on_mutant "collect needing linux first" linux_job_runs_repo_tests "$m"
+mutant collect-linux-only "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [linux]/'
+expect_on_mutant "collect needing only linux" linux_job_runs_repo_tests "$m"
+mutant collect-linuxish "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [ver, build, linux-arm]/'
+refuses "a collect that needs only a job named like linux" linux_job_runs_repo_tests "$m"
+mutant linux-macos "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux:") sub(/ubuntu-latest/, "macos-26"); print }'
+refuses "a linux job that runs on macOS" linux_job_runs_repo_tests "$m"
+mutant linux-checkout-creds "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux:") sub(/persist-credentials: false/, "persist-credentials: true"); print }'
+refuses "a linux checkout that keeps its token" every_checkout_drops_credentials "$m"
 mutant checkout-creds "$REL" awk '!d && sub(/persist-credentials: false/, "persist-credentials: true") { d = 1 } { print }'
 refuses "a release checkout that keeps its token" every_checkout_drops_credentials "$m"
 exit "$fail"
