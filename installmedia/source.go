@@ -59,6 +59,11 @@ func (s Source) String() string {
 		}
 		return "file " + s.Path
 	case KindCommand:
+		if len(s.Command) > 0 && strings.Contains(s.Command[0], "://") {
+			// A URL given as the program, which Validate refuses: it may
+			// be a secret one, so it is never printed either.
+			return "command at a URL-like path (withheld)"
+		}
 		if len(s.Command) > 0 {
 			return "command " + filepath.Base(s.Command[0])
 		}

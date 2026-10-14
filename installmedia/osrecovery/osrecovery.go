@@ -44,7 +44,7 @@ type Recovery struct {
 	Retries int                           // as Getter's: 0 means 3, negative means none
 	Backoff time.Duration                 // as Getter's: 0 means 1s
 	Timeout time.Duration                 // per request; 0 (or negative) means 1 minute
-	Log     func(format string, a ...any) // retries are reported here; nil means nowhere
+	Log     func(format string, a ...any) // retries are reported here; nil means nowhere (Fetch: the Getter's Log)
 }
 
 // defaultRequestTimeout bounds each of Recovery's requests. They are
@@ -210,7 +210,12 @@ func (rc Recovery) offer(ctx context.Context, want download.Item) (string, error
 // else fetched from Apple. The returned path is read-only (see
 // download.Getter.Get); never open it for writing. It is an
 // installmedia.Recipe.
+//
+// With no Log of its own, rc reports its handshake's retries through g's.
 func (rc Recovery) Fetch(ctx context.Context, g *download.Getter, want download.Item) (string, error) {
+	if rc.Log == nil {
+		rc.Log = g.Log
+	}
 	// Cache first: no handshake for a file already here. A rotten cached
 	// file is an error, never a reason to fetch 5 GB again.
 	cached := want

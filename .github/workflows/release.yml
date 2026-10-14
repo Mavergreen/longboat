@@ -88,15 +88,22 @@ jobs:
         run: sh build/shipyard-scripts.sh check
       - name: Build the universal updater
         run: sh build/build-updater.sh
-      - name: Package
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: sh build/package.sh
       - name: Install the pinned Go
         run: |
           set -eu
           bin="$(sh build/install-go.sh "$(tr -d '[:space:]' < components/golang/version)")"
           printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - name: Build installmedia
+        run: |
+          set -eu
+          sh build/build-installmedia.sh darwin "$MAVERICKS_BUILD_ROOT/installmedia/darwin-x86_64/installmedia"
+          sh build/build-installmedia.sh linux "$MAVERICKS_BUILD_ROOT/installmedia/linux-x86_64/installmedia"
+      - name: installmedia imports nothing 10.9 lacks
+        run: sh tests/installmedia-compat-test.sh
+      - name: Package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh build/package.sh
       - name: Tests
         env:
           GH_TOKEN: ${{ github.token }}

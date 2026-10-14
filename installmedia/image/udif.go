@@ -106,6 +106,9 @@ func openUDIF(r io.ReaderAt, size int64) (*udif, error) {
 	if plistLen > maxPlist {
 		return nil, fmt.Errorf("%w: the UDIF plist claims %d bytes, more than the %d this reader allows", ErrDamaged, plistLen, maxPlist)
 	}
+	if sectors == 0 {
+		return nil, fmt.Errorf("%w: the UDIF trailer claims no sectors, so the image holds no disk", ErrDamaged)
+	}
 	if sectors > maxSectors {
 		return nil, fmt.Errorf("%w: the UDIF trailer claims %d sectors, more than any disk holds", ErrDamaged, sectors)
 	}

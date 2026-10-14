@@ -82,6 +82,30 @@ linux_job_runs_repo_tests() {
     || { echo "collect must need the linux job, so a release waits for installmedia's Linux tests" >&2; return 1; }
 }
 
+step_of() {
+  awk -v re="$2" '/^      - / { n++ } n && $0 ~ re { print n; f = 1; exit } END { if (!f) print 0 }' "$1"
+}
+
+build_makes_installmedia_before_package() {
+  job "$1" build > "$T/build-order"
+  go="$(step_of "$T/build-order" 'sh build/install-go\.sh')"
+  bd="$(step_of "$T/build-order" 'sh build/build-installmedia\.sh darwin ')"
+  bl="$(step_of "$T/build-order" 'sh build/build-installmedia\.sh linux ')"
+  ct="$(step_of "$T/build-order" 'sh tests/installmedia-compat-test\.sh')"
+  pk="$(step_of "$T/build-order" 'sh build/package\.sh')"
+  for s in "go:install-go.sh" "bd:build-installmedia.sh darwin" "bl:build-installmedia.sh linux" \
+           "ct:installmedia-compat-test.sh" "pk:package.sh"; do
+    eval "n=\$${s%%:*}"
+    [ "$n" -gt 0 ] || { echo "the build job has no step running ${s#*:}" >&2; return 1; }
+  done
+  [ "$go" -lt "$bd" ] && [ "$go" -lt "$bl" ] \
+    || { echo "Install the pinned Go must come before Build installmedia, which builds with that Go" >&2; return 1; }
+  [ "$bd" -lt "$ct" ] \
+    || { echo "the installmedia compat step reads the darwin build, so it must follow Build installmedia" >&2; return 1; }
+  [ "$ct" -lt "$pk" ] && [ "$bl" -lt "$pk" ] \
+    || { echo "Package ships installmedia, so it must follow its build and the compat step" >&2; return 1; }
+}
+
 reconcile_dispatches_a_declared_input() {
   key="$(code "$1" | sed -n 's/^[[:space:]]*dispatch-field:[[:space:]]*\([A-Za-z_-]*\)=.*/\1/p')"
   [ -n "$key" ] || key=local_release
@@ -140,6 +164,14 @@ expect_on_mutant() {
   if "$@" 2>"$T/err"; then echo "ok: $1 accepts $what"; else echo "FAIL: $1 refused $what: $(cat "$T/err")" >&2; fail=1; fi
 }
 
+move_step() {
+  awk -v mv="      - name: $1" -v at="      - name: $2" '
+    /^      - / || /^  [^ ]/ { inmv = ($0 == mv) }
+    inmv { buf = buf $0 "\n"; next }
+    { line[++n] = $0 }
+    END { for (i = 1; i <= n; i++) { if (line[i] == at) printf "%s", buf; print line[i] } }'
+}
+
 mutant() {
   m="$T/$1.yml"; src=$2; shift 2
   "$@" < "$src" > "$m"
@@ -155,6 +187,7 @@ expect no_tags_trigger "$WF"/*.yml
 expect build_checks_the_digest "$REL"
 expect tests_step_can_extract_the_pin "$REL"
 expect linux_job_runs_repo_tests "$REL"
+expect build_makes_installmedia_before_package "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_follows_digest "$BOT"
@@ -198,4 +231,16 @@ mutant linux-checkout-creds "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux
 refuses "a linux checkout that keeps its token" every_checkout_drops_credentials "$m"
 mutant checkout-creds "$REL" awk '!d && sub(/persist-credentials: false/, "persist-credentials: true") { d = 1 } { print }'
 refuses "a release checkout that keeps its token" every_checkout_drops_credentials "$m"
+mutant package-first "$REL" move_step Package "Install the pinned Go"
+refuses "a Package step before installmedia is built" build_makes_installmedia_before_package "$m"
+mutant go-late "$REL" move_step "Install the pinned Go" Package
+refuses "a pinned Go installed after Build installmedia" build_makes_installmedia_before_package "$m"
+mutant compat-first "$REL" move_step "installmedia imports nothing 10.9 lacks" "Build installmedia"
+refuses "a compat step before the build it reads" build_makes_installmedia_before_package "$m"
+mutant compat-late "$REL" move_step "installmedia imports nothing 10.9 lacks" Tests
+refuses "a compat step after Package" build_makes_installmedia_before_package "$m"
+mutant no-compat "$REL" sed '/installmedia-compat-test\.sh/d'
+refuses "a build job without the compat step" build_makes_installmedia_before_package "$m"
+mutant no-linux-build "$REL" sed '/build-installmedia\.sh linux/d'
+refuses "a build job that builds no linux installmedia" build_makes_installmedia_before_package "$m"
 exit "$fail"

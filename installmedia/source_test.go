@@ -215,12 +215,13 @@ func TestValidate(t *testing.T) {
 
 func TestSourceString(t *testing.T) {
 	for s, want := range map[*Source]string{
-		{Kind: KindRecipe}:                                         "recipe",
-		{Kind: KindFile, Path: "/d/x.img"}:                         "file /d/x.img",
-		{Kind: KindFile, URL: "https://h/s3cr3t?token=t0k"}:        "file at a URL (withheld)",
-		{Kind: KindCommand, Command: []string{"/opt/bin/mk", "a"}}: "command mk",
-		{Kind: KindFile, Path: "https://h/s3cr3t?token=t0k"}:       "file at a URL-like path (withheld)",
-		{Kind: "script", URL: "https://h/s3cr3t?token=t0k"}:        `kind "script"`,
+		{Kind: KindRecipe}:                                                        "recipe",
+		{Kind: KindFile, Path: "/d/x.img"}:                                        "file /d/x.img",
+		{Kind: KindFile, URL: "https://h/s3cr3t?token=t0k"}:                       "file at a URL (withheld)",
+		{Kind: KindCommand, Command: []string{"/opt/bin/mk", "a"}}:                "command mk",
+		{Kind: KindFile, Path: "https://h/s3cr3t?token=t0k"}:                      "file at a URL-like path (withheld)",
+		{Kind: KindCommand, Command: []string{"https://h/s3cr3t/x.sh?token=t0k"}}: "command at a URL-like path (withheld)",
+		{Kind: "script", URL: "https://h/s3cr3t?token=t0k"}:                       `kind "script"`,
 	} {
 		if got := s.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)

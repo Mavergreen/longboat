@@ -56,6 +56,9 @@ var errHFSWrapper = errors.New("an HFS wrapper (a Mac OS Standard volume, signat
 func Detect(r io.ReaderAt, size int64) (Format, error) {
 	head := make([]byte, 4)
 	if _, err := r.ReadAt(head, 0); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return 0, fmt.Errorf("not a disc image longboat reads: it is %d bytes, too few to hold any format's signature", size)
+		}
 		return 0, fmt.Errorf("reading the image's first bytes: %w", err)
 	}
 	if size >= 512 && hasAt(r, size-512, "koly") {

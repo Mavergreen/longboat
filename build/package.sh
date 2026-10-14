@@ -1,6 +1,8 @@
 #!/bin/sh
 # platform: macOS-only -- shipyard's staging and packaging scripts run pkgbuild, productbuild and PlistBuddy
-#   usage: package.sh     writes dist/longboat-<VER>.pkg and dist/build-info.txt; VER is the first line of ./VERSION
+#   usage: package.sh     writes dist/longboat-<VER>.pkg and dist/build-info.txt; VER is the first line of ./VERSION.
+#          It stages the pkg's tree in $BUILD_ROOT/longboat-stage/root and keeps it there afterwards. It
+#          needs build/build-updater.sh's updater and build/build-installmedia.sh's darwin installmedia.
 # spec: shipyard SKILL.md "Install layout and identity" -- one pkg, 10.9.5 floor,
 #       the CLI in bin/, its scripts and the copied shipyard scripts in libexec/, and the updater
 set -eu
@@ -18,13 +20,19 @@ pathfile="$BUILD_ROOT/longboat-updater.path"
 APP="$(cat "$pathfile")"
 [ -d "$APP" ] || { echo "package: the updater $APP is gone; rerun build/build-updater.sh" >&2; exit 1; }
 
+IM="$BUILD_ROOT/installmedia/darwin-x86_64/installmedia"
+[ -f "$IM" ] || { echo "package: no $IM; run build/build-installmedia.sh darwin $IM first" >&2; exit 1; }
+
 SHIPYARD="$(cat components/shipyard/version)"
 mkdir -p "$BUILD_ROOT"
 WORK="$(mktemp -d "$BUILD_ROOT/longboat-package.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 trap 'exit 1' HUP INT TERM
 
-P="$WORK/root/usr/local/mavergreen/longboat"
+STAGE="$BUILD_ROOT/longboat-stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/root"
+P="$STAGE/root/usr/local/mavergreen/longboat"
 LIBEXEC="$P/libexec/longboat"
 mkdir -p "$P/bin" "$LIBEXEC"
 cp src/longboat "$P/bin/longboat"
@@ -32,14 +40,16 @@ chmod 755 "$P/bin/longboat"
 for f in sdks.sh progress.sh fetch.sh install.sh; do
   cp "src/$f" "$LIBEXEC/$f"
 done
+cp "$IM" "$LIBEXEC/installmedia"
+chmod 755 "$LIBEXEC/installmedia"
 printf '%s\n' "$VER" > "$LIBEXEC/VERSION"
 printf '%s\n' "${SHIPYARD#v}" > "$LIBEXEC/SHIPYARD_VERSION"
 sh build/shipyard-scripts.sh extract "$SHIPYARD" "$LIBEXEC/shipyard"
 
-sh "$SHIPYARD_SCRIPTS/stage_product.sh" --stage "$WORK/root" --product longboat \
+sh "$SHIPYARD_SCRIPTS/stage_product.sh" --stage "$STAGE/root" --product longboat \
   --name "Longboat for Mavericks" --version "$VER" --updater-app "$APP" \
   --scripts-out "$WORK/scripts" >&2
-sh "$SHIPYARD_SCRIPTS/build_component_pkg.sh" --root "$WORK/root" --identifier dev.mavergreen.longboat \
+sh "$SHIPYARD_SCRIPTS/build_component_pkg.sh" --root "$STAGE/root" --identifier dev.mavergreen.longboat \
   --version "$VER" --install-location / --scripts "$WORK/scripts" --out "$WORK/component.pkg" >&2
 
 mkdir -p dist

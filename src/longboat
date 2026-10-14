@@ -1,6 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic
 #   usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help
+#          longboat fetch installer <release> --into DIR [source flags]   exec libexec/longboat/installmedia
+#          longboat verify installer <release> <image>                    exec libexec/longboat/installmedia
 set -eu
 SELF_PATH="$0"
 while [ -L "$SELF_PATH" ]; do
@@ -28,6 +30,17 @@ LB_INSTALL_SH="$LIBEXEC/install.sh"
 
 usage() {
   echo "usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help"
+  echo "       longboat fetch installer <release> --into DIR [--source-recipe] [--source-file PATH]"
+  echo "                [--source-url URL [--auth-header-env NAME]] [--source-command PATH]"
+  echo "       longboat verify installer <release> <image>"
+}
+
+lb_installmedia() {
+  [ -x "$LIBEXEC/installmedia" ] || {
+    echo "longboat: no $LIBEXEC/installmedia; build/build-installmedia.sh builds it" >&2
+    exit 1
+  }
+  exec "$LIBEXEC/installmedia" "$@"
 }
 
 case "${1:-}" in
@@ -43,9 +56,13 @@ case "${1:-}" in
       fi
     done ;;
   fetch)
+    [ "${2:-}" != installer ] || lb_installmedia "$@"
     shift
     lb_progress_init 1
     lb_fetch_step 1 "$@" ;;
+  verify)
+    [ "${2:-}" = installer ] || { usage >&2; exit 2; }
+    lb_installmedia "$@" ;;
   install)
     shift
     lb_install "$@" ;;

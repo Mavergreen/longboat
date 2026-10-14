@@ -34,6 +34,14 @@ test_payload_has_cli() {
   [ "$(cat "$L/libexec/longboat/VERSION")" = "$ver" ]
 }
 
+test_payload_has_installmedia() {
+  f="$L/libexec/longboat/installmedia"
+  [ -f "$f" ] || { echo "no libexec/longboat/installmedia in the payload" >&2; return 1; }
+  [ "$(stat -f '%Lp' "$f")" = 755 ] || { echo "installmedia is mode $(stat -f '%Lp' "$f"), want 755" >&2; return 1; }
+  file -b "$f" | grep -q '^Mach-O 64-bit.*x86_64' \
+    || { echo "installmedia is $(file -b "$f"), want a thin x86_64 Mach-O" >&2; return 1; }
+}
+
 test_shipped_copies_match_digest() {
   sh build/shipyard-scripts.sh digest "$L/libexec/longboat/shipyard" > "$T/digest" || return 1
   diff components/shipyard/scripts.sha256 "$T/digest" >&2
@@ -101,6 +109,7 @@ test_shipped_set_installs() {
 }
 
 check test_payload_has_cli
+check test_payload_has_installmedia
 check test_base_is_the_packaging_shipyards
 check test_shipped_set_installs
 check test_shipped_copies_match_digest

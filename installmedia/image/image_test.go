@@ -286,7 +286,8 @@ func TestOpenVolumeRefusesWhatIsNoVolume(t *testing.T) {
 		"an HFS wrapper in a partition": {fixture.APM(wrapper), "HFS wrapper"},
 		"a partition with no volume":    {fixture.APM(make([]byte, 8192)), "no HFS+ volume"},
 		"a UDIF image of a UDIF image":  {fixture.UDIF(inner, fixture.Raw, 4), "UDIF image inside"},
-		"an empty file":                 {nil, "first bytes"},
+		"an empty file":                 {nil, "not a disc image longboat reads: it is 0 bytes"},
+		"a file of three bytes":         {[]byte("ER!"), "not a disc image longboat reads: it is 3 bytes"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v, err := OpenVolume(write(t, "image", c.img))
@@ -508,6 +509,13 @@ func TestCorruptUDIFTablesAreRefused(t *testing.T) {
 		{"chunks that overlap", layout(fixture.Zlib, func(l *fixture.Layout) {
 			l.Blocks[1].Chunks[2].Sector--
 		}), "overlap"},
+		{"a trailer and a table of no sectors", layout(fixture.Zlib, func(l *fixture.Layout) {
+			for i := range l.Blocks {
+				l.Blocks[i].Chunks = nil
+			}
+			l.Sectors = 0
+		}), "claims no sectors"},
+		{"a trailer of no sectors", image(fixture.Zlib, koly(492, 0)), "claims no sectors"},
 		{"too few sectors for the trailer", layout(fixture.Zlib, func(l *fixture.Layout) { l.Sectors++ }), "uncovered"},
 		{"too many sectors for the trailer", layout(fixture.Zlib, func(l *fixture.Layout) { l.Sectors-- }), "past the trailer's"},
 		{"a chunk past the data fork", layout(fixture.Zlib, func(l *fixture.Layout) {

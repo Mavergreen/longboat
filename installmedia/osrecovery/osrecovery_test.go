@@ -292,3 +292,37 @@ func TestProbeRetriesATransientHEAD(t *testing.T) {
 		t.Fatalf("%d HEADs, want 2", heads.Load())
 	}
 }
+
+// TestFetchLogsHandshakeRetriesThroughTheGetter: with no Log of its own,
+// a Recovery used as a Recipe reports its retries where the Getter it is
+// handed does, so a caller that set the Getter's Log sees them.
+func TestFetchLogsHandshakeRetriesThroughTheGetter(t *testing.T) {
+	asset := []byte("not really Apple's installer")
+	backend, want := fakeApple(t, asset)
+	front, _ := flakyFront(t, backend, func(method, path string, n int) string {
+		if method == "GET" && path == "/" && n == 1 {
+			return "503"
+		}
+		return ""
+	})
+	g, _ := getter(t)
+	var mu sync.Mutex
+	var lines []string
+	g.Log = func(f string, a ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, fmt.Sprintf(f, a...))
+	}
+	rc := Recovery{Base: front.URL, Rand: fixedRand(), Backoff: time.Millisecond}
+	if _, err := rc.Fetch(context.Background(), g, want); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, l := range lines {
+		if strings.Contains(l, "osrecovery handshake: retrying") {
+			return
+		}
+	}
+	t.Errorf("the Getter's Log saw %q, and no handshake retry", lines)
+}
