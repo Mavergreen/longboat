@@ -62,6 +62,8 @@ const (
 	hfsFolderThread = 3
 	hfsFileThread   = 4
 
+	hfsHasFolderCount = 0x0010 // kHFSHasFolderCountMask, in a folder record's flags
+
 	hfsUnmounted = 1 << 8
 	hfsJournaled = 1 << 13
 	hfsNodeFix   = 1 << 31
@@ -133,12 +135,12 @@ func HFS(files []File, o HFSOptions) []byte {
 	// The catalog's records; bodies get their fork data once laid out.
 	var recs []hfsRecord
 	folders, fileCount := 0, 0
-	recs = append(recs, hfsRecord{catalogKey(hfsRootParent, root.name), folderBody(root)})
+	recs = append(recs, hfsRecord{catalogKey(hfsRootParent, root.name), folderBody(root, o.HFSX)})
 	recs = append(recs, hfsRecord{catalogKey(hfsRoot, nil), threadBody(hfsFolderThread, hfsRootParent, root.name)})
 	for _, n := range all {
 		var body []byte
 		if n.dir {
-			body = folderBody(n)
+			body = folderBody(n, o.HFSX)
 			folders++
 			recs = append(recs, hfsRecord{catalogKey(n.cnid, nil), threadBody(hfsFolderThread, n.parent.cnid, n.name)})
 		} else {
@@ -471,9 +473,25 @@ func threadBody(typ uint16, parent uint32, name []uint16) []byte {
 	return b
 }
 
-func folderBody(n *hfsNode) []byte {
+// folderBody is an HFSPlusCatalogFolder. On HFSX its flags carry
+// kHFSHasFolderCountMask and its folderCount, at 84 (once reserved),
+// counts its child folders: xnu keeps that count on HFSX volumes only,
+// and Apple's fsck_hfs requires it there ("HasFolderCount flag needs to
+// be set"). An HFS+ folder leaves both zero, which Apple's fsck_hfs
+// accepts.
+func folderBody(n *hfsNode, hfsx bool) []byte {
 	b := make([]byte, 88)
 	binary.BigEndian.PutUint16(b, hfsFolder)
+	if hfsx {
+		binary.BigEndian.PutUint16(b[2:], hfsHasFolderCount)
+		folders := 0
+		for _, c := range n.children {
+			if c.dir {
+				folders++
+			}
+		}
+		binary.BigEndian.PutUint32(b[84:], uint32(folders))
+	}
 	binary.BigEndian.PutUint32(b[4:], uint32(len(n.children)))
 	binary.BigEndian.PutUint32(b[8:], n.cnid)
 	for _, off := range []int{12, 16, 20, 24} {
