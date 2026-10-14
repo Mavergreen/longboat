@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -868,5 +869,227 @@ func TestASecretStatusNeverEchoesTheServersReasonPhrase(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "404 Not Found") {
 		t.Errorf("err = %q, want the standard status text", err)
+	}
+}
+
+// headerSeen records, per path, the X-Api-Key and Authorization a server
+// was sent, and its Referer.
+type headerSeen struct {
+	mu       sync.Mutex
+	seen     map[string]string
+	referers map[string]string
+}
+
+func (h *headerSeen) record(r *http.Request) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.seen == nil {
+		h.seen, h.referers = map[string]string{}, map[string]string{}
+	}
+	h.seen[r.URL.Path] = r.Header.Get("X-Api-Key") + "|" + r.Header.Get("Authorization")
+	h.referers[r.URL.Path] = r.Header.Get("Referer")
+}
+
+func (h *headerSeen) reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.seen, h.referers = nil, nil
+}
+
+func (h *headerSeen) referer(path string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.referers[path]
+}
+
+// samePortServer serves plain HTTP and TLS on one port, telling them apart
+// by the first byte (a TLS handshake starts 0x16), so a redirect can go
+// from https to http with nothing but the scheme changing. It uses the
+// certificate of secure, an httptest TLS server, whose Client trusts it.
+func samePortServer(t *testing.T, secure *httptest.Server, h http.Handler) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		// As httptest does, on a host with no IPv4 loopback.
+		if ln, err = net.Listen("tcp6", "[::1]:0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv := &http.Server{Handler: h, ErrorLog: log.New(io.Discard, "", 0)}
+	go srv.Serve(&sniffListener{Listener: ln, tls: secure.TLS})
+	t.Cleanup(func() { srv.Close() })
+	return ln.Addr().String()
+}
+
+type sniffListener struct {
+	net.Listener
+	tls *tls.Config
+}
+
+type peekedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *peekedConn) Read(b []byte) (int, error) { return c.r.Read(b) }
+
+func (l *sniffListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	r := bufio.NewReader(c)
+	b, err := r.Peek(1)
+	c.SetReadDeadline(time.Time{})
+	pc := &peekedConn{Conn: c, r: r}
+	if err == nil && b[0] == 0x16 {
+		return tls.Server(pc, l.tls), nil
+	}
+	return pc, nil
+}
+
+func (h *headerSeen) at(path string) (string, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v, ok := h.seen[path]
+	return v, ok
+}
+
+func TestAnItemsHeaderNeverFollowsARedirectElsewhere(t *testing.T) {
+	body := []byte("the media")
+	hdr := http.Header{"X-Api-Key": {"k3y"}, "Authorization": {"Bearer h3ad3r"}}
+	const sent = "k3y|Bearer h3ad3r"
+	seen := &headerSeen{}
+	var originURL string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.record(r)
+		if r.URL.Path == "/bounce" {
+			http.Redirect(w, r, originURL+"/after-bounce", http.StatusFound)
+			return
+		}
+		w.Write(body)
+	}))
+	defer other.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.record(r)
+		switch r.URL.Path {
+		case "/same-host":
+			http.Redirect(w, r, "/same-host-final", http.StatusFound)
+		case "/other-host":
+			http.Redirect(w, r, other.URL+"/other-host-final", http.StatusFound)
+		case "/round-trip":
+			http.Redirect(w, r, other.URL+"/bounce", http.StatusFound)
+		default:
+			w.Write(body)
+		}
+	}))
+	defer origin.Close()
+	originURL = origin.URL
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.record(r)
+		w.Write(body)
+	}))
+	defer plain.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.record(r)
+		http.Redirect(w, r, plain.URL+"/downgraded", http.StatusFound)
+	}))
+	defer secure.Close()
+	both := samePortServer(t, secure, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.record(r)
+		if r.TLS != nil {
+			http.Redirect(w, r, "http://"+r.Host+"/same-port-plain", http.StatusFound)
+			return
+		}
+		w.Write(body)
+	}))
+
+	for _, c := range []struct {
+		name, url, final, want string
+	}{
+		{"a redirect on the same host keeps it", origin.URL + "/same-host", "/same-host-final", sent},
+		{"a redirect to another host drops it", origin.URL + "/other-host", "/other-host-final", "|"},
+		{"a redirect back to the first host after another drops it", origin.URL + "/round-trip", "/after-bounce", "|"},
+		{"a redirect from https to http drops it", secure.URL + "/start", "/downgraded", "|"},
+		{"a redirect from https to http on the same port drops it", "https://" + both + "/start", "/same-port-plain", "|"},
+	} {
+		for _, secret := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s (secret %v)", c.name, secret), func(t *testing.T) {
+				g := newGetter(t, func(g *Getter) { g.Client = secure.Client(); g.Retries = -1 })
+				seen.reset()
+				it := Item{Name: "media", URL: c.url, Header: hdr, SHA256: sum(body), Filename: "media.dmg", Secret: secret}
+				if _, err := g.Get(context.Background(), it); err != nil {
+					t.Fatal(err)
+				}
+				if got, ok := seen.at(c.final); !ok || got != c.want {
+					t.Errorf("%s was sent %q (reached %v), want %q", c.final, got, ok, c.want)
+				}
+				// Go sends the previous hop's whole URL, query and all, as
+				// the Referer (except from https to http): a secret URL's
+				// never goes, on any hop. A non-secret item keeps Go's way.
+				ref := seen.referer(c.final)
+				if secret && ref != "" {
+					t.Errorf("%s was sent the Referer %q", c.final, ref)
+				}
+				// The round trip's third-party hop, before the last.
+				if bounce := seen.referer("/bounce"); secret && bounce != "" {
+					t.Errorf("/bounce was sent the Referer %q", bounce)
+				}
+				if !secret && c.name == "a redirect to another host drops it" && ref != c.url {
+					t.Errorf("%s was sent the Referer %q, want Go's own %q", c.final, ref, c.url)
+				}
+			})
+		}
+	}
+}
+
+func TestTheRedirectRuleIsHostAndScheme(t *testing.T) {
+	for _, c := range []struct {
+		from, to string
+		strip    bool
+	}{
+		{"https://h.example/a", "https://h.example/b", false},
+		{"https://h.example/a", "https://H.EXAMPLE:443/b", false},
+		{"http://h.example/a", "http://h.example:80/b", false},
+		{"http://h.example/a", "https://h.example/b", false},
+		{"https://h.example/a", "http://h.example/b", true},
+		{"https://h.example/a", "https://cdn.h.example/b", true},
+		{"https://h.example/a", "https://h.example:8443/b", true},
+		{"http://h.example/a", "http://other.example/b", true},
+	} {
+		from, _ := url.Parse(c.from)
+		to, _ := url.Parse(c.to)
+		if got := leavesOrigin(from, to); got != c.strip {
+			t.Errorf("leavesOrigin(%s, %s) = %v, want %v", c.from, c.to, got, c.strip)
+		}
+	}
+}
+
+func TestTooManyRedirectsNeverNamesASecretURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/s3cr3t/again?token=t0k&n="+fmt.Sprint(len(r.URL.RawQuery)), http.StatusFound)
+	}))
+	defer srv.Close()
+	var logs []string
+	g := newGetter(t, func(g *Getter) {
+		g.Retries = 1
+		g.Log = func(f string, a ...any) { logs = append(logs, fmt.Sprintf(f, a...)) }
+	})
+	it := Item{Name: "media", URL: srv.URL + "/s3cr3t?token=t0k", Header: http.Header{"X-Api-Key": {"k3y"}},
+		SHA256: sum([]byte("x")), Filename: "media.dmg", Secret: true}
+	_, err := g.Get(context.Background(), it)
+	if err == nil {
+		t.Fatal("an endless redirect succeeded")
+	}
+	for _, s := range append(logs, err.Error()) {
+		for _, f := range []string{"s3cr3t", "t0k", "k3y", "127.0.0.1"} {
+			if strings.Contains(s, f) {
+				t.Errorf("%q leaks %q", s, f)
+			}
+		}
+	}
+	if !strings.Contains(err.Error(), "redirect") {
+		t.Errorf("err = %q, want it to say it was the redirects", err)
 	}
 }

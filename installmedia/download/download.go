@@ -431,6 +431,73 @@ func (g *Getter) client() *http.Client {
 	return g.Client
 }
 
+// errTooManyRedirects is a redirect chain given up on. It is the whole
+// reason reported for a Secret item, whose URL the chain must not name.
+var errTooManyRedirects = errors.New("stopped after 10 redirects")
+
+// clientFor is the client for it's download: g's own, except that a
+// redirect that leaves the first URL's origin -- another host or port, or
+// from https to plain http -- is followed without it.Header, as is every
+// later hop, even one back to the first host. Go itself strips only
+// Authorization and Cookie, and only on a hop to another domain, so a
+// header like X-Api-Key would otherwise go wherever the server pointed.
+//
+// A Secret item's redirects also carry no Referer: Go sets it to the
+// previous hop's whole URL, query and all, which would hand the secret to
+// whatever server the redirect names. A non-secret item keeps Go's own.
+func (g *Getter) clientFor(it Item) *http.Client {
+	base := g.client()
+	c := *base
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if it.Secret {
+			req.Header.Del("Referer")
+		}
+		for _, hop := range append(via[1:len(via):len(via)], req) {
+			if leavesOrigin(via[0].URL, hop.URL) {
+				for k := range it.Header {
+					delete(req.Header, k)
+					req.Header.Del(k)
+				}
+				break
+			}
+		}
+		if base.CheckRedirect != nil {
+			return base.CheckRedirect(req, via)
+		}
+		if len(via) >= 10 {
+			return errTooManyRedirects
+		}
+		return nil
+	}
+	return &c
+}
+
+// leavesOrigin reports whether a redirect from from to to goes to
+// another host or port, or from https down to http. An upgrade from http
+// to https on the same host, each on its scheme's default port, does not.
+func leavesOrigin(from, to *url.URL) bool {
+	if strings.EqualFold(from.Scheme, "https") && !strings.EqualFold(to.Scheme, "https") {
+		return true
+	}
+	if !strings.EqualFold(from.Hostname(), to.Hostname()) {
+		return true
+	}
+	return from.Port() != to.Port() && !(isDefaultPort(from) && isDefaultPort(to))
+}
+
+// isDefaultPort reports whether u names no port, or its scheme's own.
+func isDefaultPort(u *url.URL) bool {
+	switch p := u.Port(); {
+	case p == "":
+		return true
+	case strings.EqualFold(u.Scheme, "http"):
+		return p == "80"
+	case strings.EqualFold(u.Scheme, "https"):
+		return p == "443"
+	}
+	return false
+}
+
 // request builds the GET for rawURL. A malformed URL's own error embeds
 // it, so a secret one is reported as just that.
 func newRequest(ctx context.Context, rawURL string, header http.Header, ref string, secret bool) (*http.Request, error) {
@@ -468,7 +535,7 @@ func (g *Getter) attempt(ctx context.Context, it Item, cd *cacheDir, name, dest 
 		if err != nil {
 			return false, err
 		}
-		resp, err := g.client().Do(req)
+		resp, err := g.clientFor(it).Do(req)
 		if err != nil {
 			return classify(err)
 		}
@@ -671,6 +738,9 @@ func classifyErr(err error) bool {
 	if errors.As(err, &invalidErr) {
 		return false
 	}
+	if errors.Is(err, errTooManyRedirects) {
+		return false
+	}
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) && urlErr.Err != nil {
 		msg := urlErr.Err.Error()
@@ -767,6 +837,8 @@ func reason(err error) string {
 	var invalidErr x509.CertificateInvalidError
 	var certErr *tls.CertificateVerificationError
 	switch {
+	case errors.Is(err, errTooManyRedirects):
+		return errTooManyRedirects.Error()
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timed out"
 	case errors.Is(err, io.ErrUnexpectedEOF):
