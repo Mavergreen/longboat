@@ -4,11 +4,15 @@
 package installmedia
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Mavergreen/longboat/installmedia/download"
+	"github.com/Mavergreen/longboat/installmedia/osrecovery"
 )
 
 // WholeFile pins an image by the SHA-256 of the whole file: one that
@@ -22,6 +26,11 @@ type Disc struct {
 	Sums  map[string]string // package file name -> sha256
 }
 
+// Recipe gets a release's media when it is not simply a URL: it returns
+// the verified file's path, from the cache or by whatever means the
+// release needs. want carries the pin and the file name.
+type Recipe func(ctx context.Context, g *download.Getter, want download.Item) (string, error)
+
 // Release is one Mac OS X release and the pins its install media is
 // held to: Whole for an image fetched as a file, Discs for a disc the
 // user images themselves.
@@ -31,6 +40,7 @@ type Release struct {
 	FileName string // "InstallESD.dmg" | "install-disc.img"
 	Whole    *WholeFile
 	Discs    []Disc
+	Recipe   Recipe // how Whole is fetched; nil when the release has none
 }
 
 // Delivered is media that passed Check: which release and build it is,
@@ -81,7 +91,7 @@ func releases() ([]Release, error) {
 		return nil, err
 	}
 	return []Release{
-		{Name: "10.9", Codename: "mavericks", FileName: "InstallESD.dmg", Whole: &whole},
+		{Name: "10.9", Codename: "mavericks", FileName: "InstallESD.dmg", Whole: &whole, Recipe: osrecovery.Recovery{}.Fetch},
 		{Name: "10.6", Codename: "snowleopard", FileName: "install-disc.img", Discs: discs},
 	}, nil
 }

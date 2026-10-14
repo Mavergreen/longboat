@@ -174,3 +174,20 @@ func TestTheWholeFilePinIsOneWellFormedRow(t *testing.T) {
 		})
 	}
 }
+
+func TestTheTenNineReleaseUsesOsrecovery(t *testing.T) {
+	mav, err := Lookup("10.9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mav.Recipe == nil {
+		t.Error("10.9 has no Recipe, want osrecovery's")
+	}
+	sl, err := Lookup("10.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sl.Recipe != nil {
+		t.Error("10.6 has a Recipe, want none: its media is a disc the user images")
+	}
+}
