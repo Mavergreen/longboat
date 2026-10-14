@@ -64,6 +64,10 @@ case "${1:-}" in
     [ "${2:-}" = installer ] || { usage >&2; exit 2; }
     lb_installmedia "$@" ;;
   install)
+    [ "$(uname -s)" = Darwin ] || {
+      echo "longboat install needs macOS: it builds and installs a .pkg. Off macOS, longboat fetches and verifies installers" >&2
+      exit 2
+    }
     shift
     lb_install "$@" ;;
   --help|-h)

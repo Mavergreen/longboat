@@ -104,6 +104,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: sh build/package.sh
+      # spec: README.md "On Linux" -- every entry's mtime is HEAD's commit time, so with the family's pinned
+      #       Go (components/golang/version) a commit packs to the same tarball wherever and whenever it is built
+      - name: Package for Linux
+        run: |
+          set -eu
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          sh build/package-linux.sh
       - name: Tests
         env:
           GH_TOKEN: ${{ github.token }}
@@ -113,6 +121,7 @@ jobs:
           name: dist-longboat
           path: |
             dist/*.pkg
+            dist/*.tar.gz
             dist/build-info.txt
       - name: The build must not have written into the source tree
         run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
@@ -159,8 +168,41 @@ jobs:
           GOTOOLCHAIN: local
         run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
 
+  # platform: its own job, not the linux job's steps, so a macOS build failure skips only this smoke test
+  #           and never the linux job's tests, which need no build
+  linux-tarball:
+    needs: [ver, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the build's artifact
+        uses: actions/download-artifact@v8
+        with: { name: dist-longboat, path: "${{ runner.temp }}/dist" }
+      # spec: README.md "On Linux" -- the release's own tarball, extracted on Linux, runs longboat: its help,
+      #       a refused image (exit 1), a usage error (exit 2), and install, which needs macOS (exit 2)
+      - name: The Linux tarball runs here
+        env:
+          VER: ${{ needs.ver.outputs.version }}
+        run: |
+          set -eu
+          x="$RUNNER_TEMP/tarball"
+          mkdir -p "$x"
+          tar -xzf "$RUNNER_TEMP/dist/longboat-$VER-linux-x86_64.tar.gz" -C "$x"
+          lb="$x/opt/mavergreen/longboat/bin/longboat"
+          "$lb" --help
+          rc=0; "$lb" verify installer 10.6 /dev/null 2>"$x/err" || rc=$?
+          cat "$x/err"
+          [ "$rc" -eq 1 ] && grep -q 'not a disc image' "$x/err" \
+            || { echo "::error::verify installer 10.6 /dev/null exited $rc, want 1 and 'not a disc image'"; exit 1; }
+          rc=0; "$lb" fetch installer 10.6 --into "$RUNNER_TEMP/x" || rc=$?
+          [ "$rc" -eq 2 ] || { echo "::error::fetch installer 10.6 with no source exited $rc, want 2"; exit 1; }
+          rc=0; "$lb" install 10.9 2>"$x/err" || rc=$?
+          cat "$x/err"
+          [ "$rc" -eq 2 ] && grep -q 'longboat install needs macOS' "$x/err" \
+            || { echo "::error::install 10.9 exited $rc on Linux, want 2 and 'longboat install needs macOS'"; exit 1; }
+
   collect:
-    needs: [ver, build, linux]
+    needs: [ver, build, linux, linux-tarball]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
@@ -213,6 +255,7 @@ jobs:
           name: mavergreen-longboat
           path: |
             dist/*.pkg
+            dist/*.tar.gz
             dist/build-info.txt
             dist/RELEASE_NOTES.md
             dist/*.xml

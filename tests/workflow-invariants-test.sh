@@ -80,6 +80,8 @@ linux_job_runs_repo_tests() {
     || { echo "the linux job must run sh \"\$SHIPYARD_SCRIPTS/run-repo-tests.sh\", or nothing tests installmedia on Linux" >&2; return 1; }
   job "$1" collect | grep -Eq '^    needs: \[(.*, )?linux(,|\])' \
     || { echo "collect must need the linux job, so a release waits for installmedia's Linux tests" >&2; return 1; }
+  ! grep -Eq '^    needs: (build|\[(.*, )?build(,|\]))' "$T/linux" \
+    || { echo "the linux job must not need build: a macOS build failure would skip its Linux tests" >&2; return 1; }
 }
 
 step_of() {
@@ -104,6 +106,73 @@ build_makes_installmedia_before_package() {
     || { echo "the installmedia compat step reads the darwin build, so it must follow Build installmedia" >&2; return 1; }
   [ "$ct" -lt "$pk" ] && [ "$bl" -lt "$pk" ] \
     || { echo "Package ships installmedia, so it must follow its build and the compat step" >&2; return 1; }
+}
+
+step_text() {
+  awk -v n="$2" '/^      - / { i++ } i == n' "$1"
+}
+
+uploads_the_tarball() {
+  job "$1" "$2" > "$T/up-$2"
+  n="$(step_of "$T/up-$2" 'uses: actions/upload-artifact@')"
+  [ "$n" -gt 0 ] || { echo "the $2 job uploads no artifact" >&2; return 1; }
+  step_text "$T/up-$2" "$n" | grep -qx '            dist/\*\.tar\.gz' \
+    || { echo "the $2 job's artifact must carry dist/*.tar.gz, the Linux tarball" >&2; return 1; }
+}
+
+build_packs_the_linux_tarball() {
+  job "$1" build > "$T/build-linux"
+  pk="$(step_of "$T/build-linux" '^[[:space:]]*(- )?run: sh build/package\.sh')"
+  pl="$(step_of "$T/build-linux" 'sh build/package-linux\.sh')"
+  [ "$pl" -gt 0 ] || { echo "the build job never runs build/package-linux.sh" >&2; return 1; }
+  [ "$pk" -gt 0 ] && [ "$pk" -lt "$pl" ] \
+    || { echo "package-linux.sh packs package.sh's stage, so it must follow the Package step" >&2; return 1; }
+  step_text "$T/build-linux" "$pl" | grep -q 'SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"' \
+    || { echo "package-linux.sh must run with SOURCE_DATE_EPOCH set to HEAD's commit time, or the tarball is not reproducible" >&2; return 1; }
+  uploads_the_tarball "$1" build && uploads_the_tarball "$1" collect
+}
+
+# spec: README.md "On Linux" -- $1 is the tarball step with its continuation lines joined, its leading
+#       blanks and its cat "$x/err" lines dropped; $2 is a command, and $3 the check that must follow it
+followed_by() {
+  awk -v c="$2" -v e="$3" 'prev == c && index($0, e) == 1 { ok = 1 } { prev = $0 } END { exit !ok }' "$1"
+}
+
+linux_job_smokes_the_tarball() {
+  job "$1" linux-tarball > "$T/linux-smoke"
+  [ -s "$T/linux-smoke" ] || { echo "release.yml has no linux-tarball job" >&2; return 1; }
+  grep -qx '    runs-on: ubuntu-latest' "$T/linux-smoke" \
+    || { echo "the linux-tarball job must run on ubuntu-latest: it proves the tarball runs on Linux" >&2; return 1; }
+  grep -Eq '^    needs: \[(.*, )?build(,|\])' "$T/linux-smoke" \
+    || { echo "the linux-tarball job must need build, whose artifact holds the tarball it runs" >&2; return 1; }
+  job "$1" collect | grep -Eq '^    needs: \[(.*, )?linux-tarball(,|\])' \
+    || { echo "collect must need the linux-tarball job, so a release waits for the tarball to run on Linux" >&2; return 1; }
+  art="$(job "$1" build | sed -n 's/^          name: \(dist-[a-z]*\)$/\1/p' | head -1)"
+  dl="$(step_of "$T/linux-smoke" 'uses: actions/download-artifact@')"
+  [ "$dl" -gt 0 ] && [ -n "$art" ] && step_text "$T/linux-smoke" "$dl" | grep -q "name: $art[,} ]" \
+    || { echo "the linux-tarball job must download the build job's artifact ($art)" >&2; return 1; }
+  sm="$(step_of "$T/linux-smoke" 'tar -xzf .*longboat-\$VER-linux-x86_64\.tar\.gz')"
+  [ "$sm" -gt "$dl" ] \
+    || { echo "the linux-tarball job must extract the tarball after downloading it" >&2; return 1; }
+  step_text "$T/linux-smoke" "$sm" | awk '
+    { sub(/^[[:space:]]+/, "") }
+    $0 == "cat \"$x/err\"" { next }
+    buf != "" { $0 = buf " " $0; buf = "" }
+    /\\$/ { sub(/[[:space:]]*\\$/, ""); buf = $0; next }
+    { print }' > "$T/smoke"
+  for want in 'lb="$x/opt/mavergreen/longboat/bin/longboat"' '"$lb" --help'; do
+    grep -qxF -- "$want" "$T/smoke" \
+      || { echo "the tarball step must run $want" >&2; return 1; }
+  done
+  followed_by "$T/smoke" 'rc=0; "$lb" verify installer 10.6 /dev/null 2>"$x/err" || rc=$?' \
+    '[ "$rc" -eq 1 ] && grep -q '"'"'not a disc image'"'"' "$x/err" || {' \
+    || { echo "the tarball step must run verify installer 10.6 /dev/null and want exit 1 and 'not a disc image'" >&2; return 1; }
+  followed_by "$T/smoke" 'rc=0; "$lb" fetch installer 10.6 --into "$RUNNER_TEMP/x" || rc=$?' \
+    '[ "$rc" -eq 2 ] || {' \
+    || { echo "the tarball step must run fetch installer 10.6 with no source and want exit 2" >&2; return 1; }
+  followed_by "$T/smoke" 'rc=0; "$lb" install 10.9 2>"$x/err" || rc=$?' \
+    '[ "$rc" -eq 2 ] && grep -q '"'"'longboat install needs macOS'"'"' "$x/err" || {' \
+    || { echo "the tarball step must run install 10.9 and want exit 2 and 'longboat install needs macOS'" >&2; return 1; }
 }
 
 reconcile_dispatches_a_declared_input() {
@@ -188,6 +257,8 @@ expect build_checks_the_digest "$REL"
 expect tests_step_can_extract_the_pin "$REL"
 expect linux_job_runs_repo_tests "$REL"
 expect build_makes_installmedia_before_package "$REL"
+expect build_packs_the_linux_tarball "$REL"
+expect linux_job_smokes_the_tarball "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_follows_digest "$BOT"
@@ -217,13 +288,13 @@ mutant run-expr "$BOT" sed 's/"\$BRANCH"/"${{ github.ref_name }}"/g'
 refuses "a run: block that interpolates \${{ }}" no_expressions_in_run_blocks "$m"
 mutant linux-no-tests "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  linux:" && /run-repo-tests\.sh/) { print }'
 refuses "a linux job that does not run the repo's tests" linux_job_runs_repo_tests "$m"
-mutant collect-skips-linux "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [ver, build]/'
+mutant collect-skips-linux "$REL" sed 's/^    needs: \[ver, build, linux, linux-tarball\]$/    needs: [ver, build, linux-tarball]/'
 refuses "a collect that does not wait for the linux job" linux_job_runs_repo_tests "$m"
-mutant collect-linux-first "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [linux, ver, build]/'
+mutant collect-linux-first "$REL" sed 's/^    needs: \[ver, build, linux, linux-tarball\]$/    needs: [linux, ver, build, linux-tarball]/'
 expect_on_mutant "collect needing linux first" linux_job_runs_repo_tests "$m"
-mutant collect-linux-only "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [linux]/'
+mutant collect-linux-only "$REL" sed 's/^    needs: \[ver, build, linux, linux-tarball\]$/    needs: [linux, linux-tarball]/'
 expect_on_mutant "collect needing only linux" linux_job_runs_repo_tests "$m"
-mutant collect-linuxish "$REL" sed 's/^    needs: \[ver, build, linux\]$/    needs: [ver, build, linux-arm]/'
+mutant collect-linuxish "$REL" sed 's/^    needs: \[ver, build, linux, linux-tarball\]$/    needs: [ver, build, linux-arm, linux-tarball]/'
 refuses "a collect that needs only a job named like linux" linux_job_runs_repo_tests "$m"
 mutant linux-macos "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux:") sub(/ubuntu-latest/, "macos-26"); print }'
 refuses "a linux job that runs on macOS" linux_job_runs_repo_tests "$m"
@@ -243,4 +314,40 @@ mutant no-compat "$REL" sed '/installmedia-compat-test\.sh/d'
 refuses "a build job without the compat step" build_makes_installmedia_before_package "$m"
 mutant no-linux-build "$REL" sed '/build-installmedia\.sh linux/d'
 refuses "a build job that builds no linux installmedia" build_makes_installmedia_before_package "$m"
+mutant no-package-linux "$REL" sed '/package-linux\.sh/d'
+refuses "a build that never packs the Linux tarball" build_packs_the_linux_tarball "$m"
+mutant package-linux-first "$REL" move_step "Package for Linux" Package
+refuses "a Linux tarball packed before Package stages it" build_packs_the_linux_tarball "$m"
+mutant no-epoch "$REL" sed 's/SOURCE_DATE_EPOCH="\$(git log -1 --format=%ct)"/SOURCE_DATE_EPOCH="$(date +%s)"/'
+refuses "a Linux tarball stamped with the time of the build" build_packs_the_linux_tarball "$m"
+mutant build-artifact-no-tarball "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  build:" && /dist\/\*\.tar\.gz/) { print }'
+refuses "a build artifact without the tarball" build_packs_the_linux_tarball "$m"
+mutant collect-artifact-no-tarball "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  collect:" && /dist\/\*\.tar\.gz/) { print }'
+refuses "a release artifact without the tarball" build_packs_the_linux_tarball "$m"
+mutant tarball-before-build "$REL" sed 's/^    needs: \[ver, build\]$/    needs: ver/'
+refuses "a linux-tarball job that does not wait for the build's tarball" linux_job_smokes_the_tarball "$m"
+mutant linux-needs-build "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux:") sub(/^    needs: ver$/, "    needs: [ver, build]"); print }'
+refuses "a linux job that waits for the macOS build" linux_job_runs_repo_tests "$m"
+mutant collect-skips-tarball "$REL" sed 's/^    needs: \[ver, build, linux, linux-tarball\]$/    needs: [ver, build, linux]/'
+refuses "a collect that does not wait for the linux-tarball job" linux_job_smokes_the_tarball "$m"
+mutant tarball-no-download "$REL" awk '/^  [^ ]/ { j = $0 } !(j == "  linux-tarball:" && /download-artifact/) { print }'
+refuses "a linux-tarball job that downloads no artifact" linux_job_smokes_the_tarball "$m"
+mutant tarball-other-artifact "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  linux-tarball:") sub(/name: dist-longboat/, "name: dist-other"); print }'
+refuses "a linux-tarball job that downloads another artifact" linux_job_smokes_the_tarball "$m"
+mutant verify-wants-0 "$REL" sed 's/-eq 1 \] && grep -q .not a disc image./-eq 0 ] \&\& grep -q "not a disc image"/'
+refuses "a verify that wants exit 0" linux_job_smokes_the_tarball "$m"
+mutant fetch-wants-0 "$REL" sed 's/\[ "\$rc" -eq 2 \] || { echo "::error::fetch/[ "$rc" -eq 0 ] || { echo "::error::fetch/'
+refuses "a fetch with no source that wants exit 0" linux_job_smokes_the_tarball "$m"
+mutant install-wants-0 "$REL" sed 's/-eq 2 \] && grep -q .longboat install needs macOS./-eq 0 ] \&\& grep -q "longboat install needs macOS"/'
+refuses "an install that wants exit 0" linux_job_smokes_the_tarball "$m"
+mutant no-install "$REL" sed '/"\$lb" install 10\.9/d'
+refuses "a tarball step that never runs install" linux_job_smokes_the_tarball "$m"
+mutant smoke-first "$REL" move_step "The Linux tarball runs here" "Download the build's artifact"
+refuses "a tarball step before the download" linux_job_smokes_the_tarball "$m"
+mutant smoke-no-verify "$REL" sed '/verify installer 10\.6 \/dev\/null/d'
+refuses "a tarball step that never verifies" linux_job_smokes_the_tarball "$m"
+mutant smoke-no-fetch "$REL" sed '/fetch installer 10\.6 --into/d'
+refuses "a tarball step that never fetches" linux_job_smokes_the_tarball "$m"
+mutant smoke-no-help "$REL" sed '/"\$lb" --help/d'
+refuses "a tarball step that never runs --help" linux_job_smokes_the_tarball "$m"
 exit "$fail"

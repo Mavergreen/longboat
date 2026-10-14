@@ -89,6 +89,37 @@ test_a_missing_installmedia_is_named() {
     || { echo "without installmedia, longboat verify installer exited $rc: $(cat "$T/err")" >&2; return 1; }
 }
 
+# spec: src/longboat -- install builds and installs a .pkg, which only macOS can; a uname stub on PATH
+#       stands in for each host, and only uname -s is read
+uname_is() {
+  mkdir -p "$T/uname-$1"
+  printf '#!/bin/sh\necho %s\n' "$1" > "$T/uname-$1/uname"
+  chmod 755 "$T/uname-$1/uname"
+}
+uname_is Linux
+uname_is Darwin
+
+test_install_off_macos_is_refused() {
+  for form in "install 10.9" "install 10.9 --pkg-only $T/D" "install"; do
+    PATH="$T/uname-Linux:$PATH" lb $form
+    [ "$rc" -eq 2 ] && [ ! -f "$T/argv" ] && [ ! -s "$T/out" ] && grep -q 'longboat install needs macOS' "$T/err" \
+      && [ ! -e "$T/D" ] \
+      || { echo "off macOS, longboat $form exited $rc: $(cat "$T/err")" >&2; return 1; }
+  done
+}
+
+test_install_on_macos_is_not_refused() {
+  PATH="$T/uname-Darwin:$PATH" lb install
+  [ "$rc" -eq 2 ] && grep -q 'usage: longboat install' "$T/err" && ! grep -q 'needs macOS' "$T/err" \
+    || { echo "on macOS, longboat install exited $rc: $(cat "$T/err")" >&2; return 1; }
+}
+
+test_installers_work_off_macos() {
+  PATH="$T/uname-Linux:$PATH" lb verify installer 10.6 x
+  [ "$rc" -eq 7 ] || { echo "off macOS, verify installer exited $rc, want installmedia's 7" >&2; return 1; }
+  passed verify installer 10.6 x
+}
+
 check test_fetch_installer_execs_installmedia
 check test_verify_installer_execs_installmedia
 check test_arguments_pass_through_intact
@@ -96,4 +127,7 @@ check test_verify_without_installer_is_usage
 check test_sdk_fetch_never_calls_installmedia
 check test_help_lists_both_forms
 check test_a_missing_installmedia_is_named
+check test_install_off_macos_is_refused
+check test_install_on_macos_is_not_refused
+check test_installers_work_off_macos
 exit "$fail"

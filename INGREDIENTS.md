@@ -11,7 +11,7 @@ Longboat is **its own upstream**: it is versioned `YYYYMMDD.N` and nothing exter
 | Go toolchain (Mavergreen/golang-126's go126-cross pkg; `build/install-go.sh` puts it in place in CI through shipyard's `fetch_product_pkg.sh`) | `components/golang/version` | ✅ | releases: the pin is declared state |
 | Install-media pins (Mac OS X 10.9.5's `InstallESD.dmg`, 10.6 retail disc packages) | `installmedia/pins/*` | ❌ untrackable: frozen Apple artifacts | compensates: whole-file or package-level content pins, checked by `installmedia.Check`; a new pin is a deliberate commit, and releases |
 
-Go modules: none (`installmedia/go.mod` has no requires).
+Go modules: none (neither `installmedia/go.mod` nor `build/reprotar/go.mod` has any requires).
 
 No upstream release notes: Longboat is its own upstream.
 
@@ -62,3 +62,4 @@ of the pinned shipyard instead: `tests/no-shipyard-copies-test.sh` (its by-sha c
 
 - scheme: Longboat is its own upstream (no upstream release to repackage), so it versions itself by date as YYYYMMDD.N with no -mavericks.N axis
 - sparkle-updater:sdk*.pkg: the SDK pkgs that `longboat install` builds on the user's Mac carry an empty manifest `appcast` and no update-check agent. An SDK's bytes never change (the pin's sha256 guarantees it) and a newer SDK is a different product, so an SDK updater could only deliver repackages to people who already have verified bytes; Longboat's own updater delivers new SDKs (new copied pins) and fixes. Reconsider if an SDK ever tracks a moving upstream
+- linux: longboat fetches and verifies Mac OS X install media for VM builds on Linux/KVM hosts (packer-plugin-macosx, macosx-vm), which serves producing Mavericks artifacts; x86_64 only, a tarball under opt/mavergreen/longboat/, no .deb

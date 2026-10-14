@@ -44,6 +44,29 @@ The sources are tried in the order given, and each flag may be given more than o
 
 Both exit 0 when all is well, 1 when the media is refused or can't be had, and 2 on a usage error.
 
+## On Linux
+
+Every release also carries `longboat-<version>-linux-x86_64.tar.gz`, listed in the release's
+`SHA256SUMS`, for VM builds on Linux/KVM hosts (packer-plugin-macosx, macosx-vm). Everything in it is
+under `opt/mavergreen/longboat/`:
+
+```sh
+opt/mavergreen/longboat/bin/longboat fetch installer 10.9 --into ~/installers
+opt/mavergreen/longboat/bin/longboat verify installer 10.6 ~/installers/install-disc.img
+```
+
+On Linux, longboat fetches and verifies installers; `longboat install` needs macOS and says so (exit 2).
+The tarball is x86_64 only, there is no `.deb`, and it has no updater: a newer longboat is a newer pin.
+
+A consumer fetches the tarball by its release tag and SHA-256 with shipyard's pinned tarball fetcher
+(shipyard QUEUE #54), never by hand.
+
+The tarball is reproducible. `build/package-linux.sh` packs it with `build/reprotar`, which owns every
+entry by root, stamps it with the release commit's time and sorts the entries bytewise. Built with the
+family's pinned Go (`components/golang/version`), as releases are, the same files always pack to the same
+bytes, whoever builds them and whenever. Another Go may not: installmedia's bytes and the gzip stream
+both depend on the Go release.
+
 ## Building installmedia
 
 `longboat fetch installer` and `verify installer` run `libexec/longboat/installmedia`, a Go program in
