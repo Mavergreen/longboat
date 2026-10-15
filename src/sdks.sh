@@ -12,7 +12,7 @@ lb_offered() {
     . "$LONGBOAT_SHIPYARD_DIR/sdk-pins.sh"
     seen=" "
     for arch in x86_64 arm64 i386 ppc; do
-      pin="$(mav_sdk_pin "$arch")" || continue
+      pin="$(shipyard_sdk_pin "$arch")" || continue
       set -- $pin
       dir="$4"
       ver="${dir#MacOSX}"
