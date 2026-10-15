@@ -45,9 +45,10 @@ bad_usage_exits_2() {
   done
 }
 
-# spec: install-go.sh's usage -- the install path asks the registry for the repo, picks the asset with
-#       --select, and hands it to fetch_product_pkg.sh; every stub refuses anything else, so nothing
-#       here reaches the host's sudo or the network
+# spec: install-go.sh's usage -- the install path asks the registry for the repo, fetches SHA256SUMS
+#       with shipyard's shipyard_curl, picks the asset with --select, and hands it to
+#       fetch_product_pkg.sh; every stub refuses anything else, so nothing here reaches the host's
+#       sudo or the network
 install_goes_through_fetch_product_pkg() {
   S="$T/shipyard"; B="$T/stubs"; R="$T/root"
   mkdir -p "$S" "$B" "$R"
@@ -62,16 +63,17 @@ printf '#!/bin/sh\necho go version stub\n' > "\$5/bin/go"
 chmod +x "\$5/bin/go"
 echo "\$5"
 EOS
+  cat > "$S/mavericks_fetch.sh" <<EOS
+shipyard_curl() {
+  printf '%s\\n' "\$*" >> "$T/curl.urls"
+  [ "\$#" -eq 2 ] && [ "\$1" = https://github.com/Mavergreen/golang-126/releases/download/1.26.9-mavericks.1/SHA256SUMS ] || return 22
+  cp "$T/golang" "\$2"
+}
+EOS
   cat > "$B/curl" <<EOS
 #!/bin/sh
-out=""; url=""
-while [ \$# -gt 0 ]; do
-  case "\$1" in -o) out=\$2; shift ;; -*) ;; *) url=\$1 ;; esac
-  shift
-done
-printf '%s\n' "\$url" >> "$T/curl.urls"
-[ "\$url" = https://github.com/Mavergreen/golang-126/releases/download/1.26.9-mavericks.1/SHA256SUMS ] || exit 22
-cp "$T/golang" "\$out"
+echo "stub curl refuses: \$*" >&2
+exit 99
 EOS
   cat > "$B/sudo" <<EOS
 #!/bin/sh

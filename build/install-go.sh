@@ -3,7 +3,8 @@
 #   usage: install-go.sh <version>
 #          Puts the go126-cross toolchain of Mavergreen release <version> (components/golang/version)
 #          at /usr/local/mavergreen/go126-cross, the path its pkg installs to, through shipyard's
-#          fetch_product_pkg.sh, which verifies the pkg against the release's SHA256SUMS. Prints the
+#          fetch_product_pkg.sh, which verifies the pkg against the release's SHA256SUMS (fetched first
+#          with mavericks_fetch.sh's shipyard_curl, to pick the pkg's name). Prints the
 #          toolchain's bin directory, and nothing else, on stdout. Needs $SHIPYARD_SCRIPTS and sudo.
 #          INSTALL_GO_ROOT replaces /usr/local/mavergreen (the tests put the toolchain in a temp dir).
 #          install-go.sh --select <SHA256SUMS> <version>
@@ -56,7 +57,8 @@ check_version "$ver"
 repo="$(sh "$SHIPYARD_SCRIPTS/product-name.sh" repo "$SHORT")"
 d="$(mktemp -d "${TMPDIR:-/tmp}/install-go.XXXXXX")"
 trap 'sudo rm -rf "$d/cache"; rm -rf "$d"' EXIT
-curl -fsSL --retry 3 -o "$d/SHA256SUMS" "https://github.com/Mavergreen/$repo/releases/download/$ver/SHA256SUMS"
+. "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
+shipyard_curl "https://github.com/Mavergreen/$repo/releases/download/$ver/SHA256SUMS" "$d/SHA256SUMS"
 line="$(select_pkg "$d/SHA256SUMS" "$ver")"
 pkg="${line##* }"
 # platform: the pkg's go.env names CC by its absolute path under /usr/local/mavergreen/go126-cross,
