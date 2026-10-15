@@ -21,7 +21,10 @@ echo "longboat dev.mavergreen.longboat longboat" > "$T/without-sdk109"
 MAVERGREEN_PRODUCT_NAMES="$T/with-sdk109"
 MAVERICKS_SDK_URL="file://$T/served/MacOSX10.9.sdk.tar.xz"
 MAVERICKS_SDK_SHA256="$SHA"
-export MAVERGREEN_PRODUCT_NAMES MAVERICKS_SDK_URL MAVERICKS_SDK_SHA256
+# spec: install-test.sh's LONGBOAT_ROOT -- list asks LONGBOAT_ROOT what is installed, so an empty one keeps
+#       a host that has installed an SDK (a developer's 10.9 box) from answering "installed"
+LONGBOAT_ROOT="$T/root"
+export MAVERGREEN_PRODUCT_NAMES MAVERICKS_SDK_URL MAVERICKS_SDK_SHA256 LONGBOAT_ROOT
 
 check() {
   if "$@"; then echo "ok: $1"; else echo "FAIL: $1" >&2; fail=1; fi
@@ -29,6 +32,12 @@ check() {
 
 test_list_offers_10_9() {
   [ "$(sh "$LB" list)" = "10.9 sdk109 available" ]
+}
+
+test_list_says_installed() {
+  mkdir -p "$T/installed/usr/local/mavergreen/sdk109"
+  : > "$T/installed/usr/local/mavergreen/sdk109/mavergreen.plist"
+  [ "$(LONGBOAT_ROOT="$T/installed" sh "$LB" list)" = "10.9 sdk109 installed" ]
 }
 
 test_list_hides_unregistered() {
@@ -147,7 +156,7 @@ test_runs_through_symlink() {
   sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" list | grep -qx '10.9 sdk109 available'
 }
 
-for t in test_list_offers_10_9 test_list_hides_unregistered test_list_fails_on_broken_shipyard \
+for t in test_list_offers_10_9 test_list_says_installed test_list_hides_unregistered test_list_fails_on_broken_shipyard \
     test_fetch_on_broken_shipyard_is_not_unknown test_help_on_stdout test_usage_error_on_stderr \
     test_fetch_extracts test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
     test_fetch_shows_its_step test_fetch_stdout_is_only_the_path_at_a_terminal test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do
