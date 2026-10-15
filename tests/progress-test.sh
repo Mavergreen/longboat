@@ -111,6 +111,15 @@ test_start_then_end_failed() {
     || { echo "stderr: $(cat "$T/err")" >&2; return 1; }
 }
 
+# spec: src/progress.sh lb_step_run -- only a signal makes a step "interrupted"; a command that exits
+#       130 by itself failed, like any other non-zero status
+test_run_exit_130_is_failed() {
+  rc=0
+  run lb_step_run 1 x sh -c 'exit 130' || rc=$?
+  [ "$rc" -eq 130 ] && sed -n 2p "$T/err" | grep -Eq '^\[1/3\] x: failed \([0-9]+:[0-5][0-9]\)$' \
+    || { echo "rc $rc, stderr: $(cat "$T/err")" >&2; return 1; }
+}
+
 test_installer_bar_log_passthrough() {
   run lb_installer_bar 5 installing < "$T/installer-109" || return 1
   cat "$T/out" "$T/err" > "$T/both"
@@ -126,7 +135,7 @@ test_installer_bar_passes_failure_through() {
 
 for t in test_run_success_lines test_run_failure_shows_held_output test_run_holds_stdout_too \
     test_run_leaves_no_temp_files test_show_passes_through test_show_returns_status test_note \
-    test_start_then_end_done test_start_then_end_failed \
+    test_start_then_end_done test_start_then_end_failed test_run_exit_130_is_failed \
     test_installer_bar_log_passthrough test_installer_bar_passes_failure_through; do
   check "$t"
 done

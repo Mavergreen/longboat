@@ -49,7 +49,8 @@ test_clock_ticks() {
 
 test_clock_line_fits_79_columns() {
   label=0123456789012345678901234567890123456789012345678901234567890123456789
-  at_tty 1 "lb_step_run 1 '$label' sleep 2; lb_step_note 1 '$label' cached; lb_step_run 1 '$label' false" || :
+  at_tty 1 "lb_step_run 1 '$label' sleep 2; lb_step_note 1 '$label' cached; lb_step_run 1 '$label' false;
+    lb_step_start 1 '$label'; lb_step_end 1 '$label' 130 interrupted" || :
   long="$(awk 'length($0) > 79' "$T/segs")"
   [ -z "$long" ] || { echo "longer than 79 columns: $long" >&2; return 1; }
   grep -q '^\[1/1\] 0123.*\.\.\. (0:01)$' "$T/segs" || { echo "the clock never drew: $(cat "$T/segs")" >&2; return 1; }
@@ -126,6 +127,7 @@ interrupt_step() {
     rc=1
   fi
   [ "$(tail -c 1 "$T/tty" | od -An -c | tr -d ' ')" = '\n' ] || { echo "the step's line was left unfinished: $(cat "$T/tty")" >&2; rc=1; }
+  grep -q '\[1/1\] x: interrupted (' "$T/tty" || { echo "the step's line does not say interrupted: $(cat "$T/tty")" >&2; rc=1; }
   leader="$(cat "$T/leader")"
   kill -s KILL $kids "$child" $(descendants "$leader") "$leader" "$spid" 2>/dev/null || :
   wait "$spid" 2>/dev/null || :

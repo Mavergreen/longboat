@@ -3,7 +3,8 @@
 #   usage: . progress.sh     (sourced; everything it prints goes to stderr)
 #          lb_progress_init <total>                   once, before the first step
 #          lb_step_start <n> <label>                  the start line; at a terminal left open for a redraw
-#          lb_step_end <n> <label> <rc>               the done or failed line, timed from lb_step_start
+#          lb_step_end <n> <label> <rc> [<word>]      the done or failed line, timed from lb_step_start;
+#                                                     a non-zero rc says <word> instead of failed
 #          lb_step_run <n> <label> <cmd> [args...]    a silent step: its output is held and shown only if
 #                                                     it fails; a ticking clock at a terminal
 #          lb_step_show <n> <label> <cmd> [args...]   a step with progress of its own: output passes through
@@ -21,12 +22,12 @@ lb_progress_init() {
 }
 
 # spec: tests/progress-tty-test.sh test_clock_line_fits_79_columns -- at a terminal the label is cut so
-#       the longest line it heads, "[n/T] <label>: failed (MM:SS)", fits 79 columns and never wraps,
+#       the longest line it heads, "[n/T] <label>: interrupted (MM:SS)", fits 79 columns and never wraps,
 #       since a wrapped line cannot be redrawn with a carriage return.
 _lb_step_head() {
   _lb_head="[$1/${LB_PROGRESS_TOTAL:-?}] "
   if [ -n "${LB_PROGRESS_TTY:-}" ]; then
-    printf '%s%.*s' "$_lb_head" "$((79 - ${#_lb_head} - 16))" "$2"
+    printf '%s%.*s' "$_lb_head" "$((79 - ${#_lb_head} - 21))" "$2"
   else
     printf '%s%s' "$_lb_head" "$2"
   fi
@@ -49,7 +50,7 @@ lb_step_start() {
 
 lb_step_end() {
   _lb_word=done
-  [ "$3" -eq 0 ] || _lb_word=failed
+  [ "$3" -eq 0 ] || _lb_word="${4:-failed}"
   [ -z "${LB_PROGRESS_TTY:-}" ] || printf '\r' >&2
   printf '%s: %s (%s)\n' "$(_lb_step_head "$1" "$2")" "$_lb_word" \
     "$(_lb_since "${_lb_step_t0:-$(date +%s)}")" >&2
@@ -109,7 +110,7 @@ _lb_step_stop() {
   if [ -n "${_lb_step_pid:-}" ]; then
     _lb_tree_kill "$_lb_step_pid"
   fi
-  lb_step_end "$_lb_step_n" "$_lb_step_label" "$1" || :
+  lb_step_end "$_lb_step_n" "$_lb_step_label" "$1" ${3:+"$3"} || :
   [ "$1" -eq 0 ] || [ -z "$2" ] || cat "$_lb_step_dir/out" >&2 || :
   trap - EXIT HUP INT TERM
   . "$_lb_step_dir/traps"
@@ -128,7 +129,7 @@ _lb_step_trap() {
     *:) _lb_trap_then="trap - $1; kill -s $1 \$\$" ;;
     *) _lb_trap_then="eval $_lb_trap_was" ;;
   esac
-  trap "_lb_step_stop 130 ''; $_lb_trap_then" "$1"
+  trap "_lb_step_stop 130 '' interrupted; $_lb_trap_then" "$1"
 }
 
 lb_step_run() {
