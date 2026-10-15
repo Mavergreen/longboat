@@ -227,6 +227,15 @@ bot_push_job_pushes_as_the_app() {
     || { echo "a dispatched build does not count for the PR's required check; the App's push starts the real one" >&2; return 1; }
 }
 
+# platform: the App's push starts a bot run of its own; in the push run's concurrency group it would
+#           cancel that run just after its push, and it has nothing to check (its push is the digest)
+bot_skips_its_own_push() {
+  grep -Fqx "  group: shipyard-digest-bot-\${{ github.ref }}\${{ github.actor == 'mavergreen-pins-bot[bot]' && format('-{0}', github.run_id) || '' }}" "$1" \
+    || { echo "the run the App's push starts needs a concurrency group of its own, or it cancels the run that pushed" >&2; return 1; }
+  job "$1" digest | grep -qx "    if: github.actor != 'mavergreen-pins-bot\[bot\]'" \
+    || { echo "the digest job must skip the run the App's own push starts" >&2; return 1; }
+}
+
 no_expressions_in_run_blocks() {
   awk '{ match($0, /^ */); ind = RLENGTH }
        inrun && (ind > runind || $0 ~ /^ *$/) { if (index($0, "${{")) { print NR ": " $0; bad = 1 } next }
@@ -286,6 +295,7 @@ expect linux_job_smokes_the_tarball "$REL"
 expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_pushes_as_the_app "$BOT"
+expect bot_skips_its_own_push "$BOT"
 expect no_expressions_in_run_blocks "$BOT"
 
 mutant no-release-needed "$REL" sed 's/release-needed\.sh/release-unneeded.sh/'
@@ -314,6 +324,10 @@ mutant push-dispatch "$BOT" awk '{ print } /git push origin/ { print "          
 refuses "a push job that dispatches release.yml" bot_push_job_pushes_as_the_app "$m"
 mutant push-writes "$BOT" awk '{ print } /^    needs: digest$/ { print "    permissions:"; print "      contents: write" }'
 refuses "a push job whose GITHUB_TOKEN can write" bot_push_job_pushes_as_the_app "$m"
+mutant own-group "$BOT" sed "s/\\\${{ github.actor == 'mavergreen-pins-bot\\[bot\\]' && format('-{0}', github.run_id) || '' }}\$//"
+refuses "a bot whose own push shares the group that cancels" bot_skips_its_own_push "$m"
+mutant own-run "$BOT" sed "/^    if: github.actor != 'mavergreen-pins-bot\\[bot\\]'\$/d"
+refuses "a digest job that runs on the App's own push" bot_skips_its_own_push "$m"
 mutant build-skips "$REL" sed '/^    if: \${{ !cancelled() }}$/d'
 refuses "a required build that is skipped when ver fails" required_check_fails_when_ver_fails "$m"
 mutant build-no-guard "$REL" sed 's/needs\.ver\.result/needs.ver.outputs.version/'

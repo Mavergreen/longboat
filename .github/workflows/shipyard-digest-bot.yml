@@ -13,12 +13,16 @@ on:
 
 permissions: {}
 
+# A newer push to the branch cancels a run still working on an older one. The run the App's own push
+# starts gets a group of its own, and its jobs are skipped: that push is the checked digest, so there is
+# nothing to check, and it must not cancel the run that made it (which would show as cancelled).
 concurrency:
-  group: shipyard-digest-bot-${{ github.ref }}
+  group: shipyard-digest-bot-${{ github.ref }}${{ github.actor == 'mavergreen-pins-bot[bot]' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   digest:
+    if: github.actor != 'mavergreen-pins-bot[bot]'
     runs-on: macos-26
     permissions:
       contents: read
