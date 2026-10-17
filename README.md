@@ -58,8 +58,8 @@ opt/mavergreen/longboat/bin/longboat verify installer 10.6 ~/installers/install-
 On Linux, longboat fetches and verifies installers; `longboat install` needs macOS and says so (exit 2).
 The tarball is x86_64 only, there is no `.deb`, and it has no updater: a newer longboat is a newer pin.
 
-A consumer fetches the tarball by its release tag and SHA-256 with shipyard's pinned tarball fetcher
-(shipyard QUEUE #54), never by hand.
+A consumer fetches the tarball by its release tag and SHA-256 with shipyard's pinned tarball fetcher, a
+sibling of `fetch_product_pkg.sh` that shipyard has yet to write, never by hand.
 
 The tarball is reproducible. `build/package-linux.sh` packs it with `build/reprotar`, which owns every
 entry by root, stamps it with the release commit's time and sorts the entries bytewise. Built with the
@@ -75,5 +75,5 @@ with the `go` on `PATH`. Releases build it with the family's pinned Go (`compone
 whose darwin binaries run on 10.9.
 
 To build it natively on a 10.9 Mac, install Xcode's Command Line Tools first. A darwin/amd64 build
-always links through the C compiler, and without the Command Line Tools there is none (shipyard QUEUE
-#52).
+always links through the C compiler, and without the Command Line Tools there is none: the family's Go
+calls `/usr/bin/clang`, which on 10.9 is only a stub until they are installed.
