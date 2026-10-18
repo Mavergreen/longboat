@@ -80,20 +80,28 @@ lb_install() {
   return "$_lb_rc"
 }
 
+# spec: tests/install-test.sh -- test_sdk_name: the name Apple gave the OS at that version, "macOS" from 10.12
+lb_sdk_name() {
+  case "$1" in
+    10.[0-9]|10.1[01]) printf 'Mac OS X %s\n' "$1" ;;
+    *) printf 'macOS %s\n' "$1" ;;
+  esac
+}
+
 lb_install_copy() {
   mkdir -p "$2" || return 1
   ditto --norsrc --noextattr --noacl "$1" "$2/$3"
 }
 
 lb_install_pkg() {
-  sh "$_sh/stage_product.sh" --stage "$_w/root" --product "$_short" --name "Mac OS X $_ver SDK" \
+  sh "$_sh/stage_product.sh" --stage "$_w/root" --product "$_short" --name "$(lb_sdk_name "$_ver") SDK" \
     --version "$_lbver" --scripts-out "$_w/scripts" || return 1
   sh "$_sh/build_component_pkg.sh" --root "$_w/root" --identifier "$_id" --version "$_lbver" \
     --install-location / --scripts "$_w/scripts" --out "$_w/component.pkg"
 }
 
 lb_install_floor() {
-  sh "$_sh/set_install_floor.sh" --identifier "$_id" --title "Mac OS X $_ver SDK (installed by Longboat)" \
+  sh "$_sh/set_install_floor.sh" --identifier "$_id" --title "$(lb_sdk_name "$_ver") SDK (installed by Longboat)" \
     --component "$_w/component.pkg" --out "$_w/$_short-$_lbver.pkg" --min-os 10.9.5 \
     --base-version "$_base" --require-scripts
 }

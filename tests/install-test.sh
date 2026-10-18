@@ -197,10 +197,54 @@ test_missing_version_exits_2() {
   [ "$rc" -eq 2 ]
 }
 
+
+# spec: Longboat design decision 4 -- sdk113 installs at /usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk,
+#       offered once the copied registry names it; Apple called the OS "macOS" from 10.12 on
+test_sdk_name() {
+  ( . "$root/src/install.sh"
+    for pair in "10.9=Mac OS X 10.9" "10.11=Mac OS X 10.11" "10.12=macOS 10.12" "11.3=macOS 11.3"; do
+      got="$(lb_sdk_name "${pair%%=*}")"
+      [ "$got" = "${pair#*=}" ] || { echo "lb_sdk_name ${pair%%=*} printed '$got', want '${pair#*=}'" >&2; exit 1; }
+    done )
+}
+
+dist_title() {
+  rm -rf "$T/title"
+  pkgutil --expand "$1" "$T/title" || return 1
+  sed -n 's:.*<title>\(.*\)</title>.*:\1:p' "$T/title/Distribution"
+}
+
+test_pkg_title_10_9() {
+  built || return 1
+  got="$(dist_title "$T/dist/sdk109-20261012.1.pkg")" || return 1
+  [ "$got" = "Mac OS X 10.9 SDK (installed by Longboat)" ] || { echo "the 10.9 pkg's title is '$got'" >&2; return 1; }
+}
+
+test_pkg_only_builds_11_3() {
+  mkdir -p "$T/src113/MacOSX11.3.sdk/usr/include" "$T/src113/MacOSX11.3.sdk/usr/lib"
+  echo "int y;" > "$T/src113/MacOSX11.3.sdk/usr/include/stdio.h"
+  COPYFILE_DISABLE=1 tar cJf "$T/served/MacOSX11.3.sdk.tar.xz" -C "$T/src113" MacOSX11.3.sdk
+  sha="$(shasum -a 256 < "$T/served/MacOSX11.3.sdk.tar.xz" | cut -c1-64)"
+  { cat "$T/with-sdk109"; echo "sdk113 dev.mavergreen.longboat.sdk113 longboat"; } > "$T/with-sdk113"
+  out="$(MAVERGREEN_PRODUCT_NAMES="$T/with-sdk113" MAVERICKS_SDK_URL="file://$T/served/MacOSX11.3.sdk.tar.xz" \
+    MAVERICKS_SDK_SHA256="$sha" sh "$LB" install 11.3 --pkg-only "$T/dist113" 2>"$T/err113")" \
+    || { cat "$T/err113" >&2; return 1; }
+  pkg="$T/dist113/sdk113-20261012.1.pkg"
+  [ "$out" = "$pkg" ] || { echo "install 11.3 --pkg-only printed '$out', want $pkg" >&2; return 1; }
+  got="$(dist_title "$pkg")" || return 1
+  [ "$got" = "macOS 11.3 SDK (installed by Longboat)" ] || { echo "the 11.3 pkg's title is '$got'" >&2; return 1; }
+  comp="$(grep -l 'dev\.mavergreen\.longboat\.sdk113' "$T"/title/*.pkg/PackageInfo | head -1)"
+  [ -n "$comp" ] || { echo "no component PackageInfo names dev.mavergreen.longboat.sdk113" >&2; return 1; }
+  gzip -dc "$(dirname "$comp")/Payload" | cpio -it 2>/dev/null \
+    | grep -qx './usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk/usr/include/stdio.h' \
+    || { echo "the sdk113 payload lacks MacOSX11.3.sdk's stdio.h" >&2; return 1; }
+}
+
 for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload \
     test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
     test_installer_failure_fails_install test_installer_success_prints_installed_path \
-    test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2; do
+    test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2 \
+    test_sdk_name test_pkg_title_10_9 test_pkg_only_builds_11_3; do
   check "$t"
 done
 exit "$fail"
