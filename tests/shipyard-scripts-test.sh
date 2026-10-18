@@ -34,6 +34,22 @@ test_extract_copies_listed_files() {
   done < "$LIST"
 }
 
+# spec: INGREDIENTS.md "The shipyard scripts digest" -- the digest bot's fill job runs on Linux, where
+#       there is no pkgutil, so extract reads the pkg's xar with bsdtar wherever uname is not Darwin
+test_extract_off_macos_uses_bsdtar() {
+  rm -rf "$T/out-linux" "$T/linux-bin"
+  mkdir -p "$T/linux-bin"
+  printf '#!/bin/sh\necho Linux\n' > "$T/linux-bin/uname"
+  printf '#!/bin/sh\necho "stub pkgutil refuses: $*" >&2\nexit 99\n' > "$T/linux-bin/pkgutil"
+  chmod +x "$T/linux-bin/uname" "$T/linux-bin/pkgutil"
+  PATH="$T/linux-bin:$PATH" sh "$SS" extract v0.0.1 "$T/out-linux" 2>"$T/err-linux" \
+    || { cat "$T/err-linux" >&2; return 1; }
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    cmp -s "$T/out-linux/$p" "$T/root/$SCRIPTS/$p" || { echo "off macOS, differs or missing: $p" >&2; return 1; }
+  done < "$LIST"
+}
+
 test_extract_refuses_unlisted_pkg() {
   printf '%s  other.pkg\n' "$PKGSUM" > "$T/sums-unlisted"
   rm -rf "$T/out2"
@@ -104,6 +120,7 @@ test_extract_refuses_ambiguous_components() {
 check test_check_errors_without_committed_digest
 check test_extract_refuses_ambiguous_components
 check test_extract_copies_listed_files
+check test_extract_off_macos_uses_bsdtar
 check test_extract_refuses_unlisted_pkg
 check test_extract_refuses_sha_mismatch
 check test_extract_refuses_missing_listed_file

@@ -23,7 +23,7 @@ concurrency:
 jobs:
   digest:
     if: github.actor != 'mavergreen-pins-bot[bot]'
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
@@ -32,6 +32,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # platform: Ubuntu has no pkgutil; libarchive-tools is libarchive's bsdtar, which unpacks the pkg's xar
+      - name: Install bsdtar and cpio
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools cpio
 
       - name: The digest of the shipyard scripts longboat ships, if the pinned shipyard moved it
         id: fill

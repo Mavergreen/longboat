@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- expands the shipyard release pkg with pkgutil
+# platform: host-agnostic -- expands the shipyard release pkg with pkgutil on macOS, bsdtar elsewhere
 # spec: INGREDIENTS.md "The shipyard scripts digest"
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -11,9 +11,25 @@ usage() {
   exit 2
 }
 
-sha() { shasum -a 256 < "$1" | cut -c1-64; }
+# platform: 10.9 and every Mac have shasum; a stock Linux has only coreutils' sha256sum
+sha() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 < "$1" | cut -c1-64
+  else sha256sum < "$1" | cut -c1-64
+  fi
+}
 
 listed() { grep . "$LIST"; }
+
+# platform: expand_pkg <PKG> <DIR> unpacks the pkg's xar into DIR with its components' Payloads intact;
+#           10.9's bsdtar (libarchive 2.8.3) mangles the xar's directory names, so a Mac keeps pkgutil
+expand_pkg() {
+  case "$(uname -s)" in
+    Darwin)
+      # platform: guarded macOS-only call -- uname -s is Darwin
+      pkgutil --expand "$1" "$2" ;;
+    *) mkdir "$2" && (cd "$2" && bsdtar -xf "$1") ;;
+  esac
+}
 
 extract() {
   ver=$1 out=$2
@@ -35,7 +51,8 @@ extract() {
   got=$(sha "$pkg")
   [ "$got" = "$want" ] || { echo "shipyard-scripts: $name sha256 $got does not match $want" >&2; exit 1; }
 
-  pkgutil --expand "$pkg" "$T/x" >/dev/null 2>&1 \
+  case "$pkg" in /*) ;; *) pkg=$PWD/$pkg ;; esac
+  expand_pkg "$pkg" "$T/x" >/dev/null 2>&1 \
     || { echo "shipyard-scripts: cannot expand $name" >&2; exit 1; }
   mkdir "$T/p"
   find "$T/x" -type f -name Payload > "$T/payloads"

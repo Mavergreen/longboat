@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- fill extracts the pinned shipyard pkg with pkgutil, through build/shipyard-scripts.sh
+# platform: host-agnostic -- fill extracts the pinned shipyard pkg through build/shipyard-scripts.sh
 #   usage: digest-bot.sh fill           exit 0 printing nothing when components/shipyard/scripts.sha256 is
 #                                       current for the pinned shipyard (shipyard-scripts.sh check exits 0);
 #                                       when it is stale (check exits 3), print the new digest file's contents;

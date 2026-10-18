@@ -236,6 +236,16 @@ bot_skips_its_own_push() {
     || { echo "the digest job must skip the run the App's own push starts" >&2; return 1; }
 }
 
+# spec: INGREDIENTS.md "The shipyard scripts digest" -- fill only downloads, unpacks and hashes shipyard's
+#       pkg, so it runs on Linux and spends none of the org's macOS runners; bsdtar unpacks the pkg there
+bot_digest_job_runs_on_linux() {
+  job "$1" digest > "$T/digest"
+  grep -qx '    runs-on: ubuntu-latest' "$T/digest" \
+    || { echo "the digest job must run on ubuntu-latest: it needs no macOS, and macOS runners are scarce" >&2; return 1; }
+  awk '/libarchive-tools/ { a = NR } /digest-bot\.sh fill/ { f = NR } END { exit !(a && f && a < f) }' "$T/digest" \
+    || { echo "the digest job must install libarchive-tools (bsdtar) before digest-bot.sh fill unpacks the pkg" >&2; return 1; }
+}
+
 no_expressions_in_run_blocks() {
   awk '{ match($0, /^ */); ind = RLENGTH }
        inrun && (ind > runind || $0 ~ /^ *$/) { if (index($0, "${{")) { print NR ": " $0; bad = 1 } next }
@@ -296,6 +306,7 @@ expect reconcile_dispatches_a_declared_input "$REC" "$REL"
 expect bot_digest_job_reads_only "$BOT"
 expect bot_push_job_pushes_as_the_app "$BOT"
 expect bot_skips_its_own_push "$BOT"
+expect bot_digest_job_runs_on_linux "$BOT"
 expect no_expressions_in_run_blocks "$BOT"
 
 mutant no-release-needed "$REL" sed 's/release-needed\.sh/release-unneeded.sh/'
@@ -328,6 +339,10 @@ mutant own-group "$BOT" sed "s/\\\${{ github.actor == 'mavergreen-pins-bot\\[bot
 refuses "a bot whose own push shares the group that cancels" bot_skips_its_own_push "$m"
 mutant own-run "$BOT" sed "/^    if: github.actor != 'mavergreen-pins-bot\\[bot\\]'\$/d"
 refuses "a digest job that runs on the App's own push" bot_skips_its_own_push "$m"
+mutant digest-on-macos "$BOT" awk '!d && $0 == "    runs-on: ubuntu-latest" { print "    runs-on: macos-26"; d = 1; next } { print }'
+refuses "a digest job on a macOS runner" bot_digest_job_runs_on_linux "$m"
+mutant digest-no-bsdtar "$BOT" sed '/libarchive-tools/d'
+refuses "a digest job that unpacks the pkg without installing bsdtar" bot_digest_job_runs_on_linux "$m"
 mutant build-skips "$REL" sed '/^    if: \${{ !cancelled() }}$/d'
 refuses "a required build that is skipped when ver fails" required_check_fails_when_ver_fails "$m"
 mutant build-no-guard "$REL" sed 's/needs\.ver\.result/needs.ver.outputs.version/'
