@@ -68,3 +68,9 @@ of the pinned shipyard instead: `tests/no-shipyard-copies-test.sh` (its by-sha c
 - scheme: Longboat is its own upstream (no upstream release to repackage), so it versions itself by date as YYYYMMDD.N with no -mavericks.N axis
 - sparkle-updater:sdk*.pkg: the SDK pkgs that `longboat sdk install` builds on the user's Mac carry an empty manifest `appcast` and no update-check agent. An SDK's bytes never change (the pin's sha256 guarantees it) and a newer SDK is a different product, so an SDK updater could only deliver repackages to people who already have verified bytes; Longboat's own updater delivers new SDKs (new copied pins) and fixes. Reconsider if an SDK ever tracks a moving upstream
 - linux: longboat fetches and verifies Mac OS X install media for VM builds on Linux/KVM hosts (packer-plugin-macosx, macosx-vm), which serves producing Mavericks artifacts; x86_64 only, a tarball under opt/mavergreen/longboat/, no .deb
+- self-upstream-exclude:build/vm-acceptance.sh: runs only in CI's 10.9 guest; never shipped
+- self-upstream-exclude:build/digest-bot.sh: serves the Renovate digest bot; never shipped
+- self-upstream-exclude:build/install-go.sh: installs CI's Go; never shipped
+- self-upstream-exclude:**/*_test.go: Go tests; never shipped
+- self-upstream-exclude:installmedia/internal/fixture/**: test fixtures; only tests import them
+- self-upstream-exclude:docs/DEVELOPING.md: for Longboat's developers; never shipped

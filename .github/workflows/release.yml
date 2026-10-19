@@ -36,7 +36,9 @@ jobs:
         with: { fetch-depth: 0, persist-credentials: false }
       - uses: Mavergreen/shipyard/.github/actions/install@v1
       # spec: INGREDIENTS.md "Declared state" -- the shipyard scripts digest is declared state, so a push
-      #       to main publishes exactly when release-needed.sh finds no release carrying it
+      #       to main publishes exactly when release-needed.sh finds no release carrying it; shipyard SKILL.md
+      #       "Versioning" -- the date is the day our own code last changed, derived, so whatever cuts the next
+      #       release names it right
       - name: Version (YYYYMMDD.N) + publish decision
         id: ver
         env:
@@ -44,13 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          base="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
-          maxn=0
-          for t in $(git tag --list "$base.*"); do
-            n="${t##*.}"
-            case "$n" in ''|*[!0-9]*) : ;; *) [ "$n" -gt "$maxn" ] && maxn="$n" ;; esac
-          done
-          ver="$base.$((maxn + 1))"
+          ver="$(sh "$SHIPYARD_SCRIPTS/self-upstream-version.sh")"
           pub=no
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$GITHUB_EVENT_NAME" = push ]; then

@@ -50,6 +50,16 @@ ver_step_asks_release_needed_on_push_too() {
     || { echo "a push to main must reach release-needed.sh too, so a digest change releases on merge" >&2; return 1; }
 }
 
+# spec: shipyard SKILL.md "Versioning" -- a self-upstream repo's date is the day its own code last changed,
+#       derived by self-upstream-version.sh, never read from a hand-set UPSTREAM_VERSION
+ver_step_derives_the_version() {
+  job "$1" ver > "$T/verd"
+  grep -qF 'ver="$(sh "$SHIPYARD_SCRIPTS/self-upstream-version.sh")"' "$T/verd" \
+    || { echo "the ver job must take its version from shipyard's self-upstream-version.sh" >&2; return 1; }
+  ! grep -q 'UPSTREAM_VERSION' "$T/verd" \
+    || { echo "the ver job must not read UPSTREAM_VERSION for the date: it is derived from our own code" >&2; return 1; }
+}
+
 no_tags_trigger() {
   for f in "$@"; do
     if code "$f" | grep -Eq '^[[:space:]]*tags(-ignore)?:'; then
@@ -327,6 +337,7 @@ expect vm_test_installs_the_runs_pkg_on_10_9 "$REL"
 expect publish_needs_vm_test "$REL"
 expect every_checkout_drops_credentials "$REL"
 expect ver_step_asks_release_needed_on_push_too "$REL"
+expect ver_step_derives_the_version "$REL"
 expect no_tags_trigger "$WF"/*.yml
 expect build_checks_the_digest "$REL"
 expect required_check_fails_when_ver_fails "$REL"
@@ -346,6 +357,8 @@ mutant no-release-needed "$REL" sed 's/release-needed\.sh/release-unneeded.sh/'
 refuses "a ver step without release-needed.sh" ver_step_asks_release_needed_on_push_too "$m"
 mutant dispatch-only "$REL" sed 's/ || \[ "\$GITHUB_EVENT_NAME" = push \]//'
 refuses "a ver step that asks only on dispatch" ver_step_asks_release_needed_on_push_too "$m"
+mutant hand-date "$REL" sed 's|ver="$(sh "$SHIPYARD_SCRIPTS/self-upstream-version.sh")"|ver="$(tr -d "[:space:]" < UPSTREAM_VERSION).1"|'
+refuses "a ver step that reads the date from UPSTREAM_VERSION" ver_step_derives_the_version "$m"
 mutant tags "$REL" awk '{ print } /^  push:$/ { print "    tags: [\"*\"]" }'
 refuses "a tags: trigger" no_tags_trigger "$m"
 mutant no-digest-check "$REL" sed '/shipyard-scripts\.sh check/d'
