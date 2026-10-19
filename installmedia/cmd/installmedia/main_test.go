@@ -103,32 +103,33 @@ func TestUsageErrorsExitTwo(t *testing.T) {
 		{"no arguments", nil, "usage:"},
 		{"an unknown command", []string{"frobnicate"}, "usage:"},
 		{"fetch alone", []string{"fetch"}, "usage:"},
-		{"fetch installer alone", []string{"fetch", "installer"}, "usage:"},
-		{"fetch something other than an installer", []string{"fetch", "sdk", "10.9", "--into", into}, "usage:"},
-		{"an unknown release", []string{"fetch", "installer", "10.5", "--into", into, "--source-file", disc}, `no release "10.5"`},
-		{"no --into", []string{"fetch", "installer", "10.6", "--source-file", disc}, "--into"},
-		{"--into without its DIR", []string{"fetch", "installer", "10.6", "--source-file", disc, "--into"}, "--into needs"},
-		{"--into twice", []string{"fetch", "installer", "10.6", "--into", into, "--into", into, "--source-file", disc}, "--into"},
-		{"--auth-header-env first", []string{"fetch", "installer", "10.6", "--into", into, "--auth-header-env", "H"}, "--source-url"},
-		{"--auth-header-env after a file", []string{"fetch", "installer", "10.6", "--into", into, "--source-file", disc, "--auth-header-env", "H"}, "--source-url"},
-		{"--auth-header-env twice", []string{"fetch", "installer", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "H", "--auth-header-env", "H"}, "--source-url"},
-		{"--auth-header-env naming an unset variable", []string{"fetch", "installer", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "UNSET"}, "UNSET"},
-		{"--auth-header-env given a header, not a name", []string{"fetch", "installer", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "Authorization: Bearer h3ad3r"}, "environment variable"},
-		{"an unknown flag", []string{"fetch", "installer", "10.6", "--into", into, "--source-disc", disc}, `"--source-disc"`},
-		{"a stray argument that is a URL", []string{"fetch", "installer", "10.6", "--into", into, url}, "withheld"},
-		{"a stray argument that is a header", []string{"fetch", "installer", "10.6", "--into", into, "Authorization: Bearer h3ad3r"}, "withheld"},
-		{"a flag with a URL glued on", []string{"fetch", "installer", "10.6", "--into", into, "--source-url=" + url}, "withheld"},
-		{"a file source given a URL", []string{"fetch", "installer", "10.6", "--into", into, "--source-file", url}, "looks like a URL"},
-		{"a URL source that is not http", []string{"fetch", "installer", "10.6", "--into", into, "--source-url", "ftp://h.example/s3cr3t?token=t0k"}, "http"},
-		{"a command given a URL", []string{"fetch", "installer", "10.6", "--into", into, "--source-command", url}, "withheld"},
-		{"--into given a URL", []string{"fetch", "installer", "10.6", "--into", dir + "/" + url, "--source-file", disc}, "withheld"},
-		{"a relative command", []string{"fetch", "installer", "10.6", "--into", into, "--source-command", "bin/make-disc"}, "absolute"},
+		{"fetch alone", []string{"fetch"}, "usage:"},
+		{"the old installer word", []string{"fetch", "installer", "10.9", "--into", into}, "usage:"},
+		{"verify with the old installer word", []string{"verify", "installer", "10.6", disc}, "usage:"},
+		{"an unknown release", []string{"fetch", "10.5", "--into", into, "--source-file", disc}, `no install media for version "10.5"`},
+		{"no --into", []string{"fetch", "10.6", "--source-file", disc}, "--into"},
+		{"--into without its DIR", []string{"fetch", "10.6", "--source-file", disc, "--into"}, "--into needs"},
+		{"--into twice", []string{"fetch", "10.6", "--into", into, "--into", into, "--source-file", disc}, "--into"},
+		{"--auth-header-env first", []string{"fetch", "10.6", "--into", into, "--auth-header-env", "H"}, "--source-url"},
+		{"--auth-header-env after a file", []string{"fetch", "10.6", "--into", into, "--source-file", disc, "--auth-header-env", "H"}, "--source-url"},
+		{"--auth-header-env twice", []string{"fetch", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "H", "--auth-header-env", "H"}, "--source-url"},
+		{"--auth-header-env naming an unset variable", []string{"fetch", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "UNSET"}, "UNSET"},
+		{"--auth-header-env given a header, not a name", []string{"fetch", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "Authorization: Bearer h3ad3r"}, "environment variable"},
+		{"an unknown flag", []string{"fetch", "10.6", "--into", into, "--source-disc", disc}, `"--source-disc"`},
+		{"a stray argument that is a URL", []string{"fetch", "10.6", "--into", into, url}, "withheld"},
+		{"a stray argument that is a header", []string{"fetch", "10.6", "--into", into, "Authorization: Bearer h3ad3r"}, "withheld"},
+		{"a flag with a URL glued on", []string{"fetch", "10.6", "--into", into, "--source-url=" + url}, "withheld"},
+		{"a file source given a URL", []string{"fetch", "10.6", "--into", into, "--source-file", url}, "looks like a URL"},
+		{"a URL source that is not http", []string{"fetch", "10.6", "--into", into, "--source-url", "ftp://h.example/s3cr3t?token=t0k"}, "http"},
+		{"a command given a URL", []string{"fetch", "10.6", "--into", into, "--source-command", url}, "withheld"},
+		{"--into given a URL", []string{"fetch", "10.6", "--into", dir + "/" + url, "--source-file", disc}, "withheld"},
+		{"a relative command", []string{"fetch", "10.6", "--into", into, "--source-command", "bin/make-disc"}, "absolute"},
 		{"verify alone", []string{"verify"}, "usage:"},
-		{"verify installer without an image", []string{"verify", "installer", "10.6"}, "usage:"},
-		{"verify installer with two images", []string{"verify", "installer", "10.6", disc, disc}, "usage:"},
-		{"verify an unknown release", []string{"verify", "installer", "10.5", disc}, `no release "10.5"`},
-		{"verify a URL", []string{"verify", "installer", "10.6", url}, "withheld"},
-		{"a URL for a release", []string{"verify", "installer", url, disc}, "withheld"},
+		{"verify without an image", []string{"verify", "10.6"}, "usage:"},
+		{"verify with two images", []string{"verify", "10.6", disc, disc}, "usage:"},
+		{"verify an unknown release", []string{"verify", "10.5", disc}, `no install media for version "10.5"`},
+		{"verify a URL", []string{"verify", "10.6", url}, "withheld"},
+		{"a URL for a version", []string{"verify", url, disc}, "withheld"},
 		{"--version with an argument", []string{"--version", "x"}, "usage:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,8 +169,8 @@ func TestVersionAndHelp(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Errorf("--help: exit %d, stderr %q", code, stderr)
 	}
-	for _, want := range []string{"fetch installer <release> --into DIR", "--source-recipe", "--source-file PATH",
-		"--source-url URL [--auth-header-env NAME]", "--source-command PATH", "verify installer <release> <image>"} {
+	for _, want := range []string{"longboat media list", "longboat media fetch <version> --into DIR", "--source-recipe", "--source-file PATH",
+		"--source-url URL [--auth-header-env NAME]", "--source-command PATH", "longboat media verify <version> <image>"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("--help's %q does not mention %q", stdout, want)
 		}
@@ -181,7 +182,7 @@ func TestVerifyPrintsTheDelivery(t *testing.T) {
 	rel := fixtureRelease(pkgs)
 	useRelease(t, rel)
 	disc := writeFile(t, t.TempDir(), "disc.img", discBytes(pkgs))
-	code, stdout, stderr := cli(t, nil, "verify", "installer", "10.6", disc)
+	code, stdout, stderr := cli(t, nil, "verify", "10.6", disc)
 	if code != 0 {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
@@ -205,7 +206,7 @@ func TestVerifyRefusalExitsOne(t *testing.T) {
 		{"a disc that is not there", filepath.Join(t.TempDir(), "absent.img"), "absent.img"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := cli(t, nil, "verify", "installer", "10.6", tc.image)
+			code, stdout, stderr := cli(t, nil, "verify", "10.6", tc.image)
 			if code != 1 {
 				t.Errorf("exit %d, want 1 (stderr %q)", code, stderr)
 			}
@@ -221,11 +222,11 @@ func TestVerifyRefusalExitsOne(t *testing.T) {
 
 func TestFetchWithoutASourceForTenSix(t *testing.T) {
 	into := filepath.Join(t.TempDir(), "into")
-	code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into)
+	code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into)
 	if code != 2 {
 		t.Errorf("exit %d, want 2", code)
 	}
-	if stdout != "" || !strings.Contains(stderr, "no built-in recipe") {
+	if stdout != "" || !strings.Contains(stderr, "version 10.6 has no built-in recipe") {
 		t.Errorf("stdout %q, stderr %q, want a refusal naming no built-in recipe", stdout, stderr)
 	}
 	if _, err := os.Stat(into); err == nil {
@@ -276,7 +277,7 @@ func TestTheAuthHeaderComesOnlyFromTheEnvironment(t *testing.T) {
 			srv := serve(t, tc.status, discBytes(pkgs))
 			url := srv.URL + "/s3cr3t/disc.img?token=t0k"
 			into := filepath.Join(t.TempDir(), "into")
-			code, stdout, stderr := cli(t, env, "fetch", "installer", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "H")
+			code, stdout, stderr := cli(t, env, "fetch", "10.6", "--into", into, "--source-url", url, "--auth-header-env", "H")
 			if code != tc.code {
 				t.Fatalf("exit %d, want %d (stderr %q)", code, tc.code, stderr)
 			}
@@ -309,7 +310,7 @@ func TestAnUnpinnedFileIsPlacedIntoDir(t *testing.T) {
 	t.Run("passes", func(t *testing.T) {
 		src := writeFile(t, t.TempDir(), "my disc.img", good)
 		into := filepath.Join(t.TempDir(), "into")
-		code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-file", src)
+		code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-file", src)
 		if code != 0 {
 			t.Fatalf("exit %d, stderr %q", code, stderr)
 		}
@@ -333,7 +334,7 @@ func TestAnUnpinnedFileIsPlacedIntoDir(t *testing.T) {
 	t.Run("fails", func(t *testing.T) {
 		src := writeFile(t, t.TempDir(), "my disc.img", discBytes(other))
 		into := t.TempDir()
-		code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-file", src)
+		code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-file", src)
 		if code != 1 {
 			t.Errorf("exit %d, want 1", code)
 		}
@@ -351,7 +352,7 @@ func TestAnUnpinnedFileIsPlacedIntoDir(t *testing.T) {
 		src := writeFile(t, t.TempDir(), "my disc.img", discBytes(other))
 		parent := t.TempDir()
 		into := filepath.Join(parent, "a", "b")
-		code, _, _ := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-file", src)
+		code, _, _ := cli(t, nil, "fetch", "10.6", "--into", into, "--source-file", src)
 		if code != 1 {
 			t.Errorf("exit %d, want 1", code)
 		}
@@ -362,7 +363,7 @@ func TestAnUnpinnedFileIsPlacedIntoDir(t *testing.T) {
 	t.Run("already in DIR", func(t *testing.T) {
 		into := t.TempDir()
 		dest := writeFile(t, into, "install-disc.img", good)
-		code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-file", dest)
+		code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-file", dest)
 		if code != 0 || stdout != dest+"\n" {
 			t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 		}
@@ -381,13 +382,16 @@ func TestSourcesAreTriedInTheOrderGiven(t *testing.T) {
 	bad := writeFile(t, dir, "bad.img", discBytes(other))
 	good := writeFile(t, dir, "good.img", discBytes(pkgs))
 	into := filepath.Join(dir, "into")
-	code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-file", bad, "--source-file", good)
+	code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-file", bad, "--source-file", good)
 	if code != 0 || stdout != filepath.Join(into, "install-disc.img")+"\n" {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	ib, ig := strings.Index(stderr, "bad.img"), strings.Index(stderr, "good.img")
 	if ib < 0 || ig < 0 || ib > ig {
 		t.Errorf("stderr %q does not show bad.img tried, and failing, before good.img", stderr)
+	}
+	if !strings.Contains(stderr, "longboat media: version 10.6: ") || strings.Contains(stderr, "release") {
+		t.Errorf("stderr %q does not speak as longboat media of version 10.6", stderr)
 	}
 }
 
@@ -405,7 +409,7 @@ func TestACommandsDiscIsMovedIntoDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	into := filepath.Join(dir, "into")
-	code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-command", script)
+	code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-command", script)
 	if code != 0 {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
@@ -436,7 +440,7 @@ func TestAnUncleanIntoStillWorks(t *testing.T) {
 	}
 	root := t.TempDir()
 	into := root + "/x/../y"
-	code, stdout, stderr := cli(t, nil, "fetch", "installer", "10.6", "--into", into, "--source-command", script)
+	code, stdout, stderr := cli(t, nil, "fetch", "10.6", "--into", into, "--source-command", script)
 	if code != 0 {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
@@ -446,5 +450,40 @@ func TestAnUncleanIntoStillWorks(t *testing.T) {
 	}
 	if left := entries(t, filepath.Join(root, "y")); strings.Join(left, " ") != "install-disc.img" {
 		t.Errorf("R/y holds %v, want only install-disc.img", left)
+	}
+}
+
+// spec: .superpowers/specs/2026-10-19-longboat-two-jobs-design.md "longboat list" -- media list is one line
+// per release, oldest first, saying whether it has a built-in recipe
+func TestListOldestFirstWithRecipe(t *testing.T) {
+	code, stdout, stderr := cli(t, nil, "list")
+	if code != 0 || stderr != "" {
+		t.Fatalf("list: exit %d, stderr %q", code, stderr)
+	}
+	if want := "10.6 bring-your-own\n10.9 recipe\n"; stdout != want {
+		t.Errorf("list printed %q, want %q", stdout, want)
+	}
+	if code, _, _ := cli(t, nil, "list", "10.9"); code != 2 {
+		t.Errorf("list with an argument exited %d, want 2", code)
+	}
+}
+
+// spec: the design's "The command line" -- usage and errors name the longboat media forms and say
+// <version>, and installmedia is never what the user is told they ran
+func TestUsageNamesLongboatMedia(t *testing.T) {
+	into := filepath.Join(t.TempDir(), "into")
+	_, _, stderr := cli(t, nil, "fetch", "10.5", "--into", into)
+	if !strings.HasPrefix(stderr, "longboat media: ") {
+		t.Errorf("stderr %q does not start with %q", stderr, "longboat media: ")
+	}
+	for _, want := range []string{"longboat media fetch <version>", "longboat media verify <version> <image>", "offered: 10.6 10.9"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr %q does not contain %q", stderr, want)
+		}
+	}
+	for _, not := range []string{"installmedia fetch", "installer <release>", "release"} {
+		if strings.Contains(stderr, not) {
+			t.Errorf("stderr %q still says %q", stderr, not)
+		}
 	}
 }

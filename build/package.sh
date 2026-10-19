@@ -37,7 +37,7 @@ LIBEXEC="$P/libexec/longboat"
 mkdir -p "$P/bin" "$LIBEXEC"
 cp src/longboat "$P/bin/longboat"
 chmod 755 "$P/bin/longboat"
-for f in sdks.sh progress.sh fetch.sh install.sh; do
+for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh; do
   cp "src/$f" "$LIBEXEC/$f"
 done
 cp "$IM" "$LIBEXEC/installmedia"

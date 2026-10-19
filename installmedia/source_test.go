@@ -243,7 +243,7 @@ func TestDefaultSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = DefaultSources(sl)
-	if err == nil || err.Error() != "release 10.6 has no built-in recipe: name a file or command source" {
+	if err == nil || err.Error() != "version 10.6 has no built-in recipe: name a file or command source" {
 		t.Errorf("DefaultSources(10.6) = %+v, %v", got, err)
 	}
 }
@@ -400,7 +400,7 @@ func TestObtainByKind(t *testing.T) {
 		o, _ := sourceOptions(t)
 		rel, _ := unpinnedDisc()
 		_, err := Obtain(ctx, rel, Source{Kind: KindRecipe}, o)
-		if err == nil || err.Error() != "release 10.6 has no built-in recipe: name a file or command source" {
+		if err == nil || err.Error() != "version 10.6 has no built-in recipe: name a file or command source" {
 			t.Errorf("Obtain(recipe) for a release with none = %v", err)
 		}
 	})

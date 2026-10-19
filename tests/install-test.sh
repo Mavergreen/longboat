@@ -43,13 +43,13 @@ check() {
   if "$@"; then echo "ok: $1"; else echo "FAIL: $1" >&2; fail=1; fi
 }
 
-built() { [ -f "$T/dist/sdk109-20261012.1.pkg" ] || sh "$LB" install 10.9 --pkg-only "$T/dist" >/dev/null; }
+built() { [ -f "$T/dist/sdk109-20261012.1.pkg" ] || sh "$LB" sdk install 10.9 --pkg-only "$T/dist" >/dev/null; }
 
 test_install_needs_root() {
   [ "$(id -u)" -ne 0 ] || { echo "skip: running as root" >&2; return 0; }
   rc=0
-  sh "$LB" install 10.9 2>"$T/err" >/dev/null || rc=$?
-  [ "$rc" -eq 2 ] && grep -q 'sudo longboat install 10.9' "$T/err" && [ ! -e "$T/root" ]
+  sh "$LB" sdk install 10.9 2>"$T/err" >/dev/null || rc=$?
+  [ "$rc" -eq 2 ] && grep -q 'sudo longboat sdk install 10.9' "$T/err" && [ ! -e "$T/root" ]
 }
 
 test_pkg_only_builds_conformant_pkg() {
@@ -94,7 +94,7 @@ test_pkg_payload() {
 
 test_pkg_only_shows_four_steps() {
   rm -rf "$T/sdist"
-  out="$(sh "$LB" install 10.9 --pkg-only "$T/sdist" 2>"$T/steperr")" || { cat "$T/steperr" >&2; return 1; }
+  out="$(sh "$LB" sdk install 10.9 --pkg-only "$T/sdist" 2>"$T/steperr")" || { cat "$T/steperr" >&2; return 1; }
   [ "$out" = "$T/sdist/sdk109-20261012.1.pkg" ] || { echo "stdout was '$out'" >&2; return 1; }
   prev=0
   for s in "1 fetching the 10.9 SDK" "2 copying the SDK" "3 building the SDK pkg" "4 adding the install floor"; do
@@ -113,7 +113,7 @@ test_failing_step_shows_its_output() {
   cp -R "$LONGBOAT_SHIPYARD_DIR" "$T/badsy"
   printf 'echo boom >&2\nexit 1\n' > "$T/badsy/build_component_pkg.sh"
   rc=0
-  LONGBOAT_SHIPYARD_DIR="$T/badsy" sh "$LB" install 10.9 --pkg-only "$T/fdist2" >/dev/null 2>"$T/steperr" || rc=$?
+  LONGBOAT_SHIPYARD_DIR="$T/badsy" sh "$LB" sdk install 10.9 --pkg-only "$T/fdist2" >/dev/null 2>"$T/steperr" || rc=$?
   [ "$rc" -ne 0 ] || return 1
   grep -q '^\[3/4\] building the SDK pkg: failed (' "$T/steperr" || { cat "$T/steperr" >&2; return 1; }
   sed -n '/^\[3\/4\] building the SDK pkg: failed (/,$p' "$T/steperr" | grep -qx boom \
@@ -141,7 +141,7 @@ make_installer_shims() {
 test_installer_failure_fails_install() {
   make_installer_shims fail
   rc=0
-  PATH="$T/shims:$PATH" sh "$LB" install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
+  PATH="$T/shims:$PATH" sh "$LB" sdk install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
   [ "$rc" -ne 0 ] && [ ! -s "$T/iout" ] \
     && grep -q '^installer: The install failed' "$T/ierr" \
     && grep -q '^\[5/5\] installing: failed (' "$T/ierr" \
@@ -152,7 +152,7 @@ test_installer_failure_fails_install() {
 test_installer_success_prints_installed_path() {
   make_installer_shims ok
   rc=0
-  PATH="$T/shims:$PATH" sh "$LB" install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
+  PATH="$T/shims:$PATH" sh "$LB" sdk install 10.9 >"$T/iout" 2>"$T/ierr" || rc=$?
   [ "$rc" -eq 0 ] && [ "$(cat "$T/iout")" = /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk ] \
     && grep -q '^\[5/5\] installing: done (' "$T/ierr" \
     && grep -q -e '-verboseR' "$T/shimlog" && grep -q -e '-target /' "$T/shimlog" || { echo "rc=$rc"; cat "$T/iout" "$T/ierr" >&2; return 1; }
@@ -161,7 +161,7 @@ test_installer_success_prints_installed_path() {
 test_home_untouched() {
   mkdir -p "$T/home"
   rm -rf "$T/dist2"
-  HOME="$T/home" sh "$LB" install 10.9 --pkg-only "$T/dist2" >/dev/null || return 1
+  HOME="$T/home" sh "$LB" sdk install 10.9 --pkg-only "$T/dist2" >/dev/null || return 1
   [ -z "$(ls -A "$T/home")" ]
 }
 
@@ -170,7 +170,7 @@ test_install_failure_leaves_nothing() {
   echo old > "$T/fdist/sdk109-old.pkg"
   rc=0
   MAVERICKS_SDK_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
-    sh "$LB" install 10.9 --pkg-only "$T/fdist" >/dev/null 2>&1 || rc=$?
+    sh "$LB" sdk install 10.9 --pkg-only "$T/fdist" >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || return 1
   [ "$(ls "$T"/fdist/*.pkg)" = "$T/fdist/sdk109-old.pkg" ] && [ "$(cat "$T/fdist/sdk109-old.pkg")" = old ] || return 1
   [ -z "$(ls -A "$T/fdist/cache" 2>/dev/null)" ] || return 1
@@ -184,7 +184,7 @@ test_root_install_failure_leaves_installed_sdk() {
   echo old > "$sdk/mavergreen.plist"
   rc=0
   MAVERICKS_SDK_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
-    sh "$LB" install 10.9 >/dev/null 2>&1 || rc=$?
+    sh "$LB" sdk install 10.9 >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || return 1
   [ "$(cat "$sdk/mavergreen.plist")" = old ] && [ -d "$sdk/SDKs/MacOSX10.9.sdk" ] || return 1
   [ -z "$(ls -A "$T/root/usr/local/mavergreen/var/longboat" 2>/dev/null)" ] || return 1
@@ -193,7 +193,7 @@ test_root_install_failure_leaves_installed_sdk() {
 
 test_missing_version_exits_2() {
   rc=0
-  env -u LONGBOAT_VERSION sh "$LB" install 10.9 --pkg-only "$T/nover" >/dev/null 2>&1 || rc=$?
+  env -u LONGBOAT_VERSION sh "$LB" sdk install 10.9 --pkg-only "$T/nover" >/dev/null 2>&1 || rc=$?
   [ "$rc" -eq 2 ]
 }
 
@@ -227,7 +227,7 @@ test_pkg_only_builds_11_3() {
   sha="$(shasum -a 256 < "$T/served/MacOSX11.3.sdk.tar.xz" | cut -c1-64)"
   { cat "$T/with-sdk109"; echo "sdk113 dev.mavergreen.longboat.sdk113 longboat"; } > "$T/with-sdk113"
   out="$(MAVERGREEN_PRODUCT_NAMES="$T/with-sdk113" MAVERICKS_SDK_URL="file://$T/served/MacOSX11.3.sdk.tar.xz" \
-    MAVERICKS_SDK_SHA256="$sha" sh "$LB" install 11.3 --pkg-only "$T/dist113" 2>"$T/err113")" \
+    MAVERICKS_SDK_SHA256="$sha" sh "$LB" sdk install 11.3 --pkg-only "$T/dist113" 2>"$T/err113")" \
     || { cat "$T/err113" >&2; return 1; }
   pkg="$T/dist113/sdk113-20261012.1.pkg"
   [ "$out" = "$pkg" ] || { echo "install 11.3 --pkg-only printed '$out', want $pkg" >&2; return 1; }
@@ -240,11 +240,21 @@ test_pkg_only_builds_11_3() {
     || { echo "the sdk113 payload lacks MacOSX11.3.sdk's stdio.h" >&2; return 1; }
 }
 
+# spec: src/longboat lb_moved -- the old form announces itself on stderr and leaves stdout exactly as the
+#       new form prints it, so a caller capturing the path gets only the path
+test_old_install_form_keeps_stdout() {
+  new="$(sh "$LB" sdk install 10.9 --pkg-only "$T/newform" 2>/dev/null)" || return 1
+  old="$(sh "$LB" install 10.9 --pkg-only "$T/oldform" 2>"$T/olderr")" || { cat "$T/olderr" >&2; return 1; }
+  [ "$old" = "$T/oldform/sdk109-20261012.1.pkg" ] && [ "$new" = "$T/newform/sdk109-20261012.1.pkg" ] \
+    && [ "$(sed -n 1p "$T/olderr")" = "longboat: 'longboat install 10.9' is now 'longboat sdk install 10.9'" ] \
+    || { echo "old stdout '$old', new stdout '$new', old stderr '$(sed -n 1p "$T/olderr")'" >&2; return 1; }
+}
+
 for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload \
     test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
     test_installer_failure_fails_install test_installer_success_prints_installed_path \
     test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2 \
-    test_sdk_name test_pkg_title_10_9 test_pkg_only_builds_11_3; do
+    test_sdk_name test_pkg_title_10_9 test_pkg_only_builds_11_3 test_old_install_form_keeps_stdout; do
   check "$t"
 done
 exit "$fail"

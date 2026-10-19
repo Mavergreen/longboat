@@ -186,7 +186,7 @@ jobs:
         uses: actions/download-artifact@v8
         with: { name: dist-longboat, path: "${{ runner.temp }}/dist" }
       # spec: README.md "On Linux" -- the release's own tarball, extracted on Linux, runs longboat: its help,
-      #       a refused image (exit 1), a usage error (exit 2), and install, which needs macOS (exit 2)
+      #       a refused image (exit 1), a usage error (exit 2), and sdk install, which needs macOS (exit 2)
       - name: The Linux tarball runs here
         env:
           VER: ${{ needs.ver.outputs.version }}
@@ -197,16 +197,16 @@ jobs:
           tar -xzf "$RUNNER_TEMP/dist/longboat-$VER-linux-x86_64.tar.gz" -C "$x"
           lb="$x/opt/mavergreen/longboat/bin/longboat"
           "$lb" --help
-          rc=0; "$lb" verify installer 10.6 /dev/null 2>"$x/err" || rc=$?
+          rc=0; "$lb" media verify 10.6 /dev/null 2>"$x/err" || rc=$?
           cat "$x/err"
           [ "$rc" -eq 1 ] && grep -q 'not a disc image' "$x/err" \
-            || { echo "::error::verify installer 10.6 /dev/null exited $rc, want 1 and 'not a disc image'"; exit 1; }
-          rc=0; "$lb" fetch installer 10.6 --into "$RUNNER_TEMP/x" || rc=$?
-          [ "$rc" -eq 2 ] || { echo "::error::fetch installer 10.6 with no source exited $rc, want 2"; exit 1; }
-          rc=0; "$lb" install 10.9 2>"$x/err" || rc=$?
+            || { echo "::error::media verify 10.6 /dev/null exited $rc, want 1 and 'not a disc image'"; exit 1; }
+          rc=0; "$lb" media fetch 10.6 --into "$RUNNER_TEMP/x" || rc=$?
+          [ "$rc" -eq 2 ] || { echo "::error::media fetch 10.6 with no source exited $rc, want 2"; exit 1; }
+          rc=0; "$lb" sdk install 10.9 2>"$x/err" || rc=$?
           cat "$x/err"
-          [ "$rc" -eq 2 ] && grep -q 'longboat install needs macOS' "$x/err" \
-            || { echo "::error::install 10.9 exited $rc on Linux, want 2 and 'longboat install needs macOS'"; exit 1; }
+          [ "$rc" -eq 2 ] && grep -q 'longboat sdk install needs macOS for now' "$x/err" \
+            || { echo "::error::sdk install 10.9 exited $rc on Linux, want 2 and 'longboat sdk install needs macOS for now'"; exit 1; }
 
   # spec: shipyard check 29 -- this run's own pkg, installed on Mac OS X 10.9 and run there before publish;
   #       build/vm-acceptance.sh installs the real 10.9 SDK with it and uninstalls both

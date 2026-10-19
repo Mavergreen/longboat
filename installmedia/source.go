@@ -174,7 +174,7 @@ func DefaultSources(rel Release) ([]Source, error) {
 }
 
 func noRecipe(rel Release) error {
-	return fmt.Errorf("release %s has no built-in recipe: name a file or command source", rel.Name)
+	return fmt.Errorf("version %s has no built-in recipe: name a file or command source", rel.Name)
 }
 
 // Options are what Obtain and Resolve need from their caller.
@@ -261,7 +261,7 @@ func obtainRecipe(ctx context.Context, rel Release, o Options) (Candidate, error
 		return Candidate{}, noRecipe(rel)
 	}
 	if rel.Whole == nil {
-		return Candidate{}, fmt.Errorf("release %s's recipe has no whole-file pin to hold its file to", rel.Name)
+		return Candidate{}, fmt.Errorf("version %s's recipe has no whole-file pin to hold its file to", rel.Name)
 	}
 	if err := needGetter(o); err != nil {
 		return Candidate{}, err
@@ -481,7 +481,7 @@ func (e *ResolveError) Error() string {
 	for i, t := range e.Tries {
 		parts[i] = t.Source + ": " + t.Err.Error()
 	}
-	return fmt.Sprintf("no source gave release %s's media: %s", e.Release, strings.Join(parts, "; "))
+	return fmt.Sprintf("no source gave version %s's media: %s", e.Release, strings.Join(parts, "; "))
 }
 
 // Unwrap is every try's error, so errors.Is sees a cancel.
@@ -499,21 +499,21 @@ func (e *ResolveError) Unwrap() []error {
 // check is discarded. A cancel stops it after the source it cancelled.
 func Resolve(ctx context.Context, rel Release, sources []Source, o Options) (Delivered, error) {
 	if len(sources) == 0 {
-		return Delivered{}, fmt.Errorf("release %s: no media sources to try", rel.Name)
+		return Delivered{}, fmt.Errorf("version %s: no media sources to try", rel.Name)
 	}
 	for i, s := range sources {
 		if err := s.Validate(); err != nil {
-			return Delivered{}, fmt.Errorf("release %s: source %d (%s): %w", rel.Name, i+1, s, err)
+			return Delivered{}, fmt.Errorf("version %s: source %d (%s): %w", rel.Name, i+1, s, err)
 		}
 	}
 	re := &ResolveError{Release: rel.Name}
 	for _, s := range sources {
 		d, err := resolveOne(ctx, rel, s, o)
 		if err == nil {
-			o.logf("release %s: media from %s", rel.Name, s)
+			o.logf("version %s: media from %s", rel.Name, s)
 			return d, nil
 		}
-		o.logf("release %s: %s failed: %v", rel.Name, s, err)
+		o.logf("version %s: %s failed: %v", rel.Name, s, err)
 		re.Tries = append(re.Tries, Try{Source: s.String(), Err: err})
 		if ctx.Err() != nil {
 			break
@@ -533,7 +533,7 @@ func resolveOne(ctx context.Context, rel Release, s Source, o Options) (Delivere
 	d, err := Check(ctx, rel, c.Path)
 	if err != nil {
 		if derr := c.Discard(); derr != nil {
-			o.logf("release %s: removing %s's scratch: %v", rel.Name, s, derr)
+			o.logf("version %s: removing %s's scratch: %v", rel.Name, s, derr)
 		}
 		return Delivered{}, err
 	}

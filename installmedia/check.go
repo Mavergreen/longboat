@@ -44,7 +44,7 @@ func check(ctx context.Context, rel Release, path string, onChunk func()) (Deliv
 		if len(rel.Discs) > 0 {
 			return checkDisc(ctx, rel, path, onChunk)
 		}
-		return Delivered{}, fmt.Errorf("release %s: no content check yet", rel.Name)
+		return Delivered{}, fmt.Errorf("version %s: no content check yet", rel.Name)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -118,7 +118,7 @@ func checkDisc(ctx context.Context, rel Release, path string, onChunk func()) (D
 		}
 	}
 	if disc == nil {
-		return Delivered{}, fmt.Errorf("build %s is not a disc this module knows for release %s (it knows %s)", build, rel.Name, strings.Join(builds, ", "))
+		return Delivered{}, fmt.Errorf("build %s is not a disc this module knows for version %s (it knows %s)", build, rel.Name, strings.Join(builds, ", "))
 	}
 	ents, err := vol.ReadDir(packagesPath)
 	if errors.Is(err, fs.ErrNotExist) {

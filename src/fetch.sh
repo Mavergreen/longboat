@@ -13,12 +13,12 @@ lb_offered_versions() {
 
 lb_fetch() {
   [ $# -eq 3 ] && [ "$2" = --into ] && [ -n "$3" ] || {
-    echo "usage: longboat fetch <version> --into DIR" >&2
+    echo "usage: longboat sdk fetch <version> --into DIR" >&2
     return 2
   }
   _lb_line="$(lb_lookup "$1")" || {
     [ $? -eq 1 ] || return 1
-    echo "longboat: unknown SDK '$1'; offered: $(lb_offered_versions)" >&2
+    echo "longboat: no SDK for version '$1'; offered: $(lb_offered_versions)" >&2
     return 2
   }
   set -- "$3" $_lb_line

@@ -35,7 +35,7 @@ stage() {
     R="$B/longboat-stage/root"
     L="$R/usr/local/mavergreen/longboat/libexec/longboat"
     list="bin/longboat=$root/src/longboat"
-    for f in sdks.sh progress.sh fetch.sh install.sh; do
+    for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh; do
       list="$list
 libexec/longboat/$f=$root/src/$f"
     done
@@ -114,12 +114,12 @@ test_the_extracted_longboat_runs_the_linux_installmedia() {
   lb="$T/x/$P/bin/longboat"
   [ -x "$lb" ] && [ -x "$T/x/$P/libexec/longboat/installmedia" ] \
     || { echo "longboat or installmedia is not executable once extracted" >&2; return 1; }
-  "$lb" --help > "$T/help" 2>&1 && grep -q 'verify installer <release> <image>' "$T/help" \
+  "$lb" --help > "$T/help" 2>&1 && grep -q 'longboat media verify <version> <image>' "$T/help" \
     || { echo "longboat --help: $(cat "$T/help")" >&2; return 1; }
   rc=0
-  "$lb" verify installer 10.6 /dev/null > "$T/vout" 2>&1 || rc=$?
-  [ "$rc" -eq 7 ] && grep -qx 'linux installmedia verify installer 10.6 /dev/null' "$T/vout" \
-    || { echo "longboat verify installer exited $rc: $(cat "$T/vout")" >&2; return 1; }
+  "$lb" media verify 10.6 /dev/null > "$T/vout" 2>&1 || rc=$?
+  [ "$rc" -eq 7 ] && grep -qx 'linux installmedia verify 10.6 /dev/null' "$T/vout" \
+    || { echo "longboat media verify exited $rc: $(cat "$T/vout")" >&2; return 1; }
 }
 
 # spec: build/package-linux.sh -- it refuses, writing nothing, without SOURCE_DATE_EPOCH, the stage, the linux
