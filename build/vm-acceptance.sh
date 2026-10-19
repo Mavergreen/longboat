@@ -10,12 +10,15 @@ pkg=$1 ver=$2
 MG=/usr/local/mavergreen
 lb=$MG/bin/longboat
 sdk=$MG/sdk109/SDKs/MacOSX10.9.sdk
+# platform: the family's base component installs the mavergreen helper at /usr/local/bin, outside the prefix
+helper=/usr/local/bin/mavergreen
 
 step() { printf '== %s\n' "$*"; }
 fail() { echo "vm-acceptance: $*" >&2; exit 1; }
 
 sw_vers
 case "$(sw_vers -productVersion)" in 10.9|10.9.*) ;; *) fail "this guest is not Mac OS X 10.9" ;; esac
+[ -x "$helper" ] || fail "no mavergreen helper at $helper"
 sudo -n true || fail "the guest's user cannot sudo without a password, and installer needs root"
 [ -f "$pkg" ] || fail "no $pkg"
 ! pkgutil --pkgs | grep -q '^dev\.mavergreen\.longboat' || fail "the guest already has a Longboat receipt"
@@ -38,12 +41,12 @@ path=$(sudo "$lb" install 10.9) || fail "longboat install 10.9 failed"
 grep -qx '10.9 sdk109 installed' list.out || fail "list does not say 10.9 is installed"
 
 step "sudo mavergreen uninstall sdk109"
-sudo "$MG/bin/mavergreen" uninstall sdk109
+sudo "$helper" uninstall sdk109
 [ ! -e "$MG/sdk109" ] || fail "$MG/sdk109 is left behind"
 ! pkgutil --pkgs | grep -qx 'dev\.mavergreen\.longboat\.sdk109' || fail "the sdk109 receipt is left behind"
 
 step "sudo mavergreen uninstall longboat"
-sudo "$MG/bin/mavergreen" uninstall longboat
+sudo "$helper" uninstall longboat
 [ ! -e "$MG/longboat" ] || fail "$MG/longboat is left behind"
 [ ! -e "$lb" ] || fail "$lb is left behind"
 ! pkgutil --pkgs | grep -q '^dev\.mavergreen\.longboat' || fail "a Longboat receipt is left behind: $(pkgutil --pkgs | grep '^dev\.mavergreen\.longboat')"
