@@ -40,6 +40,9 @@ chmod 755 "$P/bin/longboat"
 for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh; do
   cp "src/$f" "$LIBEXEC/$f"
 done
+# spec: docs/longboat.1 -- the manual page goes where the mavergreen helper links share/man from
+mkdir -p "$P/share/man/man1"
+cp docs/longboat.1 "$P/share/man/man1/longboat.1"
 cp "$IM" "$LIBEXEC/installmedia"
 chmod 755 "$LIBEXEC/installmedia"
 printf '%s\n' "$VER" > "$LIBEXEC/VERSION"

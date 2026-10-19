@@ -453,7 +453,7 @@ func TestAnUncleanIntoStillWorks(t *testing.T) {
 	}
 }
 
-// spec: .superpowers/specs/2026-10-19-longboat-two-jobs-design.md "longboat list" -- media list is one line
+// spec: docs/longboat.1 COMMANDS, "media list" -- media list is one line
 // per release, oldest first, saying whether it has a built-in recipe
 func TestListOldestFirstWithRecipe(t *testing.T) {
 	code, stdout, stderr := cli(t, nil, "list")
@@ -468,7 +468,7 @@ func TestListOldestFirstWithRecipe(t *testing.T) {
 	}
 }
 
-// spec: the design's "The command line" -- usage and errors name the longboat media forms and say
+// spec: docs/longboat.1 SYNOPSIS -- usage and errors name the longboat media forms and say
 // <version>, and installmedia is never what the user is told they ran
 func TestUsageNamesLongboatMedia(t *testing.T) {
 	into := filepath.Join(t.TempDir(), "into")

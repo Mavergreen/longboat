@@ -1,7 +1,7 @@
 #!/bin/sh
 # platform: host-agnostic
 #   usage: package-linux.sh   writes dist/longboat-<VER>-linux-x86_64.tar.gz, VER being the first line of
-#          ./VERSION, and prints its path. It packs bin/longboat and libexec/longboat/ from build/package.sh's
+#          ./VERSION, and prints its path. It packs bin/longboat, libexec/longboat/ and share/man/ from build/package.sh's
 #          stage in $BUILD_ROOT/longboat-stage/root, with build/build-installmedia.sh's linux installmedia in
 #          place of the darwin one, and neither the updater nor the manifest. SOURCE_DATE_EPOCH must be set:
 #          it is every entry's mtime. It builds build/reprotar with the go on PATH, for this host.
@@ -43,6 +43,7 @@ trap 'exit 1' HUP INT TERM
 mkdir -p "$WORK/root/bin" "$WORK/root/libexec"
 cp "$P/bin/longboat" "$WORK/root/bin/longboat"
 cp -R "$P/libexec/longboat" "$WORK/root/libexec/longboat"
+cp -R "$P/share" "$WORK/root/share"
 cp "$IM" "$WORK/root/libexec/longboat/installmedia"
 chmod 755 "$WORK/root/bin/longboat" "$WORK/root/libexec/longboat/installmedia"
 

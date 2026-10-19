@@ -1,79 +1,74 @@
 # Longboat
 
-`longboat` fetches and installs the Mac OS X 10.9 Mavericks SDK, and fetches and verifies the Mac OS X
-install media that VM builds start from.
+Longboat gets you an SDK, or install media, for a particular OS X.
 
-## How to use
+It is an unofficial community tool, not affiliated with Apple. SDKs are fetched from third-party mirrors
+onto your own machine and never redistributed.
 
-```sh
-longboat --help
-sudo longboat install 10.9
-```
-
-A future release may handle other SDK versions.
-
-## Fetching and verifying installers
+## Getting an SDK
 
 ```sh
-longboat fetch installer 10.9 --into ~/installers
-longboat verify installer 10.6 ~/installers/install-disc.img
+sudo longboat sdk install 10.9
 ```
 
-`fetch installer <release> --into DIR` puts the release's install media in `DIR`, as `InstallESD.dmg`
-(10.9) or `install-disc.img` (10.6), and prints its path. Nothing takes that name until it has passed
-the release's pins. Media is trusted by what it holds, never by where it came from: 10.9's
-`InstallESD.dmg` by its SHA-256, and a 10.6 disc by the SHA-256 of every package on it, so any faithful
-copy passes, whatever made the image (an ISO, a Disk Utility `.dmg` or `.cdr`).
+It fetches the pinned SDK, checks its SHA-256, installs it as its own package, and prints where it is:
 
-The sources are tried in the order given, and each flag may be given more than once:
+```
+/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk
+```
 
-- `--source-recipe`: the release's built-in recipe. 10.9's downloads `InstallESD.dmg` from Apple's
-  servers. With no source flag at all, `fetch installer` uses it.
-- `--source-file PATH`: an image on this machine.
-- `--source-url URL [--auth-header-env NAME]`: an image to download. The request's header, written
-  `Name: value`, comes from the environment variable `NAME`, never from the command line. Neither the URL
-  nor the header is ever printed.
-- `--source-command PATH`: a program on this machine. It runs with a stripped environment and is given,
-  as its last argument, a directory to write exactly one image into.
-
-**10.6 has no built-in recipe; bring your own disc.** Apple doesn't serve 10.6, so `fetch installer
-10.6` needs a source flag: an image of a retail Snow Leopard DVD.
-
-`verify installer <release> <image>` checks an image you already have, and prints
-`<release> <build> <content-digest>`.
-
-Both exit 0 when all is well, 1 when the media is refused or can't be had, and 2 on a usage error.
-
-## On Linux
-
-Every release also carries `longboat-<version>-linux-x86_64.tar.gz`, listed in the release's
-`SHA256SUMS`, for VM builds on Linux/KVM hosts (packer-plugin-macosx, macosx-vm). Everything in it is
-under `opt/mavergreen/longboat/`:
+Build against it:
 
 ```sh
-opt/mavergreen/longboat/bin/longboat fetch installer 10.9 --into ~/installers
-opt/mavergreen/longboat/bin/longboat verify installer 10.6 ~/installers/install-disc.img
+clang -isysroot /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk -mmacosx-version-min=10.9 hello.c
 ```
 
-On Linux, longboat fetches and verifies installers; `longboat install` needs macOS and says so (exit 2).
-The tarball is x86_64 only, there is no `.deb`, and it has no updater: a newer longboat is a newer pin.
+`longboat sdk list` shows the SDKs on offer, 10.9 and 11.3 today, and which are installed. 11.3's lands at
+`/usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk`. To remove one, run `sudo longboat sdk uninstall 10.9`.
 
-A consumer fetches the tarball by its release tag and SHA-256 with shipyard's pinned tarball fetcher, a
-sibling of `fetch_product_pkg.sh` that shipyard has yet to write, never by hand.
+`longboat sdk fetch 10.9 --into DIR` puts the SDK in a directory of your own instead, without root and
+without installing anything.
 
-The tarball is reproducible. `build/package-linux.sh` packs it with `build/reprotar`, which owns every
-entry by root, stamps it with the release commit's time and sorts the entries bytewise. Built with the
-family's pinned Go (`components/golang/version`), as releases are, the same files always pack to the same
-bytes, whoever builds them and whenever. Another Go may not: installmedia's bytes and the gzip stream
-both depend on the Go release.
+## Getting install media
 
-## Building installmedia
+```sh
+longboat media fetch 10.9 --into ~/installers
+```
 
-`longboat fetch installer` and `verify installer` run `libexec/longboat/installmedia`, a Go program in
-`installmedia/cmd/installmedia`. `build/build-installmedia.sh darwin|linux <out>` builds it for x86_64
-with the `go` on `PATH`. Releases build it with the family's pinned Go (`components/golang/version`),
-whose darwin binaries run on 10.9.
+It puts 10.9's `InstallESD.dmg` in `~/installers`, downloaded from Apple, and prints its path. Nothing
+takes that name until it has passed 10.9's pins: media is trusted by what it holds, not by where it came
+from.
 
-To build it natively on a 10.9 Mac, install Xcode's Command Line Tools first. A darwin/amd64 build
-always links through the C compiler, and without the Command Line Tools there is none: the family's Go
-calls `/usr/bin/clang`, which on 10.9 is only a stub until they are installed.
+10.6 has no download: Apple doesn't serve it. Bring an image of a retail Snow Leopard DVD:
+
+```sh
+longboat media fetch 10.6 --into ~/installers --source-file ~/snow-leopard.iso
+```
+
+`longboat media verify 10.6 IMAGE` checks an image you already have. `longboat media list` shows the
+versions Longboat knows.
+
+Mavergreen's Packer plugin, packer-plugin-macosx, doesn't need Longboat: it checks whatever media you give
+it with the same checks. Longboat is for getting the media onto your machine yourself, for UTM, a real
+Mac, a 10.9 box or a Linux/KVM host, and a file it fetched is one the plugin accepts.
+
+## What works where
+
+`longboat list` shows both jobs at once, one line per OS X version.
+
+| | Mac | Linux |
+| --- | --- | --- |
+| `longboat list` | yes | yes |
+| `longboat sdk list`, `sdk fetch` | yes | yes, with `curl`, `xz` and `shasum` |
+| `longboat sdk install`, `sdk uninstall` | yes, as root | not yet: it says so |
+| `longboat media list`, `media fetch`, `media verify` | yes | yes |
+
+On a Mac, install Longboat's `.pkg` from the [latest release](https://github.com/Mavergreen/longboat/releases/latest);
+it keeps itself up to date. On Linux, unpack the same release's `longboat-<version>-linux-x86_64.tar.gz`,
+listed in its `SHA256SUMS`, and run `opt/mavergreen/longboat/bin/longboat`. Its manual page is
+`opt/mavergreen/longboat/share/man/man1/longboat.1`.
+
+## More
+
+`man longboat` has every command and flag, where things go, the exit codes, and the commands' earlier
+spellings, which still work. [docs/DEVELOPING.md](docs/DEVELOPING.md) is for working on Longboat itself.
