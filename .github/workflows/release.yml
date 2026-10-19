@@ -185,8 +185,9 @@ jobs:
       - name: Download the build's artifact
         uses: actions/download-artifact@v8
         with: { name: dist-longboat, path: "${{ runner.temp }}/dist" }
-      # spec: README.md "On Linux" -- the release's own tarball, extracted on Linux, runs longboat: its help,
-      #       a refused image (exit 1), a usage error (exit 2), and sdk install, which needs macOS (exit 2)
+      # spec: README.md "What works where" -- the release's own tarball, extracted on Linux, runs longboat: its
+      #       help, a refused image (exit 1), a usage error (exit 2), sdk install, which needs macOS (exit 2),
+      #       and sdk list and sdk fetch, which work here with ubuntu-latest's curl, xz and perl's shasum
       - name: The Linux tarball runs here
         env:
           VER: ${{ needs.ver.outputs.version }}
@@ -207,6 +208,12 @@ jobs:
           cat "$x/err"
           [ "$rc" -eq 2 ] && grep -q 'longboat sdk install needs macOS for now' "$x/err" \
             || { echo "::error::sdk install 10.9 exited $rc on Linux, want 2 and 'longboat sdk install needs macOS for now'"; exit 1; }
+          "$lb" sdk list > "$x/sdks"
+          grep -qx "10.9 sdk109 available" "$x/sdks" && grep -qx "11.3 sdk113 available" "$x/sdks" \
+            || { echo "::error::sdk list does not offer 10.9 and 11.3"; exit 1; }
+          sdk="$("$lb" sdk fetch 10.9 --into "$RUNNER_TEMP/sdk")"
+          [ "$sdk" = "$RUNNER_TEMP/sdk/MacOSX10.9.sdk" ] && [ -f "$sdk/SDKSettings.plist" ] \
+            || { echo "::error::sdk fetch 10.9 printed '$sdk', want $RUNNER_TEMP/sdk/MacOSX10.9.sdk holding SDKSettings.plist"; exit 1; }
 
   # spec: shipyard check 29 -- this run's own pkg, installed on Mac OS X 10.9 and run there before publish;
   #       build/vm-acceptance.sh installs the real 10.9 SDK with it and uninstalls both

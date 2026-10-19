@@ -186,6 +186,14 @@ linux_job_smokes_the_tarball() {
   followed_by "$T/smoke" 'rc=0; "$lb" sdk install 10.9 2>"$x/err" || rc=$?' \
     '[ "$rc" -eq 2 ] && grep -q '"'"'longboat sdk install needs macOS for now'"'"' "$x/err" || {' \
     || { echo "the tarball step must run sdk install 10.9 and want exit 2 and 'longboat sdk install needs macOS for now'" >&2; return 1; }
+  # platform: sdk list and sdk fetch were proved on a stock ubuntu:24.04 given curl, xz and perl's shasum, which
+  #           ubuntu-latest has, so the smoke holds the tarball to them
+  followed_by "$T/smoke" '"$lb" sdk list > "$x/sdks"' \
+    'grep -qx "10.9 sdk109 available" "$x/sdks" && grep -qx "11.3 sdk113 available" "$x/sdks" || {' \
+    || { echo "the tarball step must run sdk list and want 10.9 and 11.3 available" >&2; return 1; }
+  followed_by "$T/smoke" 'sdk="$("$lb" sdk fetch 10.9 --into "$RUNNER_TEMP/sdk")"' \
+    '[ "$sdk" = "$RUNNER_TEMP/sdk/MacOSX10.9.sdk" ] && [ -f "$sdk/SDKSettings.plist" ] || {' \
+    || { echo "the tarball step must run sdk fetch 10.9 and want the SDK it prints" >&2; return 1; }
 }
 
 reconcile_dispatches_a_declared_input() {
@@ -444,6 +452,10 @@ mutant smoke-no-verify "$REL" sed '/media verify 10\.6 \/dev\/null/d'
 refuses "a tarball step that never verifies" linux_job_smokes_the_tarball "$m"
 mutant smoke-no-fetch "$REL" sed '/media fetch 10\.6 --into/d'
 refuses "a tarball step that never fetches" linux_job_smokes_the_tarball "$m"
+mutant smoke-no-sdk-list "$REL" sed '/"\$lb" sdk list/d'
+refuses "a tarball step that never lists the SDKs" linux_job_smokes_the_tarball "$m"
+mutant smoke-no-sdk-fetch "$REL" sed '/"\$lb" sdk fetch 10\.9/d'
+refuses "a tarball step that never fetches an SDK" linux_job_smokes_the_tarball "$m"
 mutant smoke-no-help "$REL" sed '/"\$lb" --help/d'
 refuses "a tarball step that never runs --help" linux_job_smokes_the_tarball "$m"
 exit "$fail"
