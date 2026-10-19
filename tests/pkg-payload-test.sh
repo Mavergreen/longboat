@@ -28,7 +28,7 @@ check() {
 
 test_payload_has_cli() {
   [ -f "$L/bin/longboat" ] || return 1
-  for f in sdks.sh progress.sh fetch.sh install.sh VERSION; do
+  for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh VERSION; do
     [ -f "$L/libexec/longboat/$f" ] || return 1
   done
   [ "$(cat "$L/libexec/longboat/VERSION")" = "$ver" ]

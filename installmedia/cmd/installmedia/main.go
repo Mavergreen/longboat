@@ -1,8 +1,10 @@
-// Command installmedia fetches and verifies Mac OS X install media. It
-// is what longboat's `fetch installer` and `verify installer` run.
+// Command installmedia lists, fetches and verifies Mac OS X install media.
+// It is what `longboat media list`, `longboat media fetch` and
+// `longboat media verify` run, and it speaks as them.
 //
-//	installmedia fetch installer <release> --into DIR [source flags]
-//	installmedia verify installer <release> <image>
+//	installmedia list
+//	installmedia fetch <version> --into DIR [source flags]
+//	installmedia verify <version> <image>
 //	installmedia --version
 //
 // Exit codes: 0 ok, 1 refused or failed, 2 usage.
@@ -36,22 +38,23 @@ var version = "dev"
 // lookup finds a release by name; a test points it at a fixture.
 var lookup = installmedia.Lookup
 
-const synopsis = `usage: installmedia fetch installer <release> --into DIR [--source-recipe] [--source-file PATH] [--source-url URL [--auth-header-env NAME]] [--source-command PATH]
-       installmedia verify installer <release> <image>
-       installmedia --version | --help
+const synopsis = `usage: longboat media list
+       longboat media fetch <version> --into DIR [--source-recipe] [--source-file PATH] [--source-url URL [--auth-header-env NAME]] [--source-command PATH]
+       longboat media verify <version> <image>
 `
 
 const details = `
-fetch installer puts <release>'s install media in DIR, held to its pins, and prints its path.
+list says, for each version, whether Longboat can fetch its media itself (recipe) or needs yours.
+fetch puts <version>'s install media in DIR, held to its pins, and prints its path.
   Sources are tried in the order given, and each flag may be given more than once:
-    --source-recipe          the release's built-in recipe (10.9: Apple's servers)
+    --source-recipe          the version's built-in recipe (10.9: Apple's servers)
     --source-file PATH       a disc image on this host
     --source-url URL         a disc image to download; the URL is never printed
     --auth-header-env NAME   the download's "Name: value" header, read from the environment
                              variable NAME; it follows its --source-url and is never printed
     --source-command PATH    a program on this host, run with a directory to write the image into
-  With no source, it uses the release's built-in recipe. 10.6 has none: bring your own disc.
-verify installer holds <image> to <release>'s pins and prints <release> <build> <content-digest>.
+  With no source, it uses the version's built-in recipe. 10.6 has none: bring your own disc.
+verify holds <image> to <version>'s pins and prints <version> <build> <content-digest>.
 Exit status: 0 ok, 1 refused or failed, 2 usage.
 `
 
@@ -83,6 +86,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
 		io.WriteString(stdout, synopsis+details)
 		return 0
+	case len(args) > 0 && args[0] == "list":
+		err = list(args[1:], stdout)
 	case len(args) > 0 && args[0] == "fetch":
 		err = fetch(ctx, args[1:], stdout, stderr, getenv)
 	case len(args) > 0 && args[0] == "verify":
@@ -96,30 +101,56 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		return 0
 	case errors.As(err, &ue):
 		if ue.msg != "" {
-			fmt.Fprintf(stderr, "installmedia: %s\n", ue.msg)
+			fmt.Fprintf(stderr, "longboat media: %s\n", ue.msg)
 		}
 		io.WriteString(stderr, synopsis)
 		return 2
 	default:
-		fmt.Fprintf(stderr, "installmedia: %v\n", err)
+		fmt.Fprintf(stderr, "longboat media: %v\n", err)
 		return 1
 	}
 }
 
-// release is the release named by args, which start "installer <release>".
+// release is the release named by args, which start "<version>".
 func release(cmd string, args []string) (installmedia.Release, error) {
-	if len(args) < 2 || args[0] != "installer" || strings.HasPrefix(args[1], "-") {
-		return installmedia.Release{}, usagef("%s takes installer <release>", cmd)
+	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
+		return installmedia.Release{}, usagef("%s takes <version>", cmd)
 	}
-	if !releaseName.MatchString(args[1]) {
+	if !releaseName.MatchString(args[0]) {
 		// It may be a secret in the wrong place: never echoed.
-		return installmedia.Release{}, usagef("%s installer takes a release, such as 10.9, and was given something else (withheld)", cmd)
+		return installmedia.Release{}, usagef("%s takes a version, such as 10.9, and was given something else (withheld)", cmd)
 	}
-	rel, err := lookup(args[1])
+	rel, err := lookup(args[0])
 	if err != nil {
-		return installmedia.Release{}, &usageError{err.Error()}
+		return installmedia.Release{}, usagef("no install media for version %q; offered: %s", args[0], strings.Join(versions(), " "))
 	}
 	return rel, nil
+}
+
+// versions are the releases this module knows, oldest first.
+func versions() []string {
+	rels := installmedia.Releases()
+	names := make([]string, len(rels))
+	for i, r := range rels {
+		names[len(rels)-1-i] = r.Name
+	}
+	return names
+}
+
+// list prints each release, oldest first, with whether it has a built-in recipe.
+func list(args []string, stdout io.Writer) error {
+	if len(args) != 0 {
+		return usagef("list takes no arguments")
+	}
+	rels := installmedia.Releases()
+	for i := len(rels) - 1; i >= 0; i-- {
+		how := "bring-your-own"
+		if rels[i].Recipe != nil {
+			how = "recipe"
+		}
+		fmt.Fprintf(stdout, "%s %s\n", rels[i].Name, how)
+	}
+	return nil
 }
 
 // looksLikeURL is an argument that may be a secret URL, so it is never
@@ -131,10 +162,10 @@ func verify(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if len(args) != 3 {
-		return usagef("verify installer takes <release> <image>")
+	if len(args) != 2 {
+		return usagef("verify takes <version> <image>")
 	}
-	image := args[2]
+	image := args[1]
 	if looksLikeURL(image) {
 		return usagef("verify reads a file on this host, and the image given looks like a URL (withheld)")
 	}
@@ -155,7 +186,7 @@ var plainFlag = regexp.MustCompile(`^--?[A-Za-z0-9][A-Za-z0-9-]*$`)
 // envName is a portable environment variable name.
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// fetchArgs are fetch installer's arguments, parsed.
+// fetchArgs are fetch's arguments, parsed.
 type fetchArgs struct {
 	rel     installmedia.Release
 	into    string
@@ -169,7 +200,7 @@ func parseFetch(args []string, getenv func(string) string) (fetchArgs, error) {
 		return fa, err
 	}
 	fa.rel = rel
-	for i := 2; i < len(args); i++ {
+	for i := 1; i < len(args); i++ {
 		flag := args[i]
 		value := func() (string, error) {
 			if i+1 >= len(args) || args[i+1] == "" || strings.HasPrefix(args[i+1], "-") {
@@ -232,13 +263,13 @@ func parseFetch(args []string, getenv func(string) string) (fetchArgs, error) {
 		default:
 			if !plainFlag.MatchString(flag) {
 				// It may be a secret that lost its flag: never echoed.
-				return fa, usagef("fetch installer does not take an argument it was given (withheld: it may be a URL or a header); a URL goes after --source-url")
+				return fa, usagef("fetch does not take an argument it was given (withheld: it may be a URL or a header); a URL goes after --source-url")
 			}
-			return fa, usagef("fetch installer does not take %q", flag)
+			return fa, usagef("fetch does not take %q", flag)
 		}
 	}
 	if fa.into == "" {
-		return fa, usagef("fetch installer needs --into DIR")
+		return fa, usagef("fetch needs --into DIR")
 	}
 	if len(fa.sources) == 0 {
 		def, err := installmedia.DefaultSources(fa.rel)
@@ -261,7 +292,7 @@ func fetch(ctx context.Context, args []string, stdout, stderr io.Writer, getenv 
 		return err
 	}
 	rel := fa.rel
-	logf := func(format string, a ...any) { fmt.Fprintf(stderr, "installmedia: "+format+"\n", a...) }
+	logf := func(format string, a ...any) { fmt.Fprintf(stderr, "longboat media: "+format+"\n", a...) }
 	made, err := mkdirs(fa.into)
 	// A fetch that fails takes back the directories it made, if they are
 	// still empty; a DIR that was already there stays.

@@ -1,8 +1,10 @@
 #!/bin/sh
 # platform: host-agnostic
-#   usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help
-#          longboat fetch installer <release> --into DIR [source flags]   exec libexec/longboat/installmedia
-#          longboat verify installer <release> <image>                    exec libexec/longboat/installmedia
+#   usage: longboat list                     both jobs, one row per OS X version
+#          longboat sdk list|install|uninstall|fetch ...     the sourced libraries beside this script
+#          longboat media list|fetch|verify ...              exec libexec/longboat/installmedia
+#          longboat --help | sdk --help | media --help
+#          the old forms (install, fetch, fetch installer, verify installer) run as their new forms
 set -eu
 SELF_PATH="$0"
 while [ -L "$SELF_PATH" ]; do
@@ -27,12 +29,40 @@ export MAVERGREEN_PROGRESS
 . "$LIBEXEC/fetch.sh"
 LB_INSTALL_SH="$LIBEXEC/install.sh"
 . "$LIBEXEC/install.sh"
+. "$LIBEXEC/uninstall.sh"
 
 usage() {
-  echo "usage: longboat list | fetch <version> --into DIR | install <version> [--pkg-only DIR] | --help"
-  echo "       longboat fetch installer <release> --into DIR [--source-recipe] [--source-file PATH]"
+  echo "usage: longboat list"
+  echo "       longboat sdk list"
+  echo "       longboat sdk install <version> [--pkg-only DIR]"
+  echo "       longboat sdk uninstall <version>"
+  echo "       longboat sdk fetch <version> --into DIR"
+  echo "       longboat media list"
+  echo "       longboat media fetch <version> --into DIR [--source-recipe] [--source-file PATH]"
   echo "                [--source-url URL [--auth-header-env NAME]] [--source-command PATH]"
-  echo "       longboat verify installer <release> <image>"
+  echo "       longboat media verify <version> <image>"
+  echo "       longboat --help | longboat sdk --help | longboat media --help"
+}
+
+help() {
+  echo "Longboat gets you an SDK, or install media, for a particular OS X."
+  echo
+  usage
+  cat <<'EOF'
+
+  list    each OS X version Longboat knows, and what it can do for it: an SDK, install media, or both
+  sdk     install an SDK on this Mac, remove it, or fetch it into a directory
+  media   fetch install media into a directory, checked against its pins, or check an image you have
+
+See man longboat.
+EOF
+}
+
+media_usage() {
+  echo "usage: longboat media list"
+  echo "       longboat media fetch <version> --into DIR [--source-recipe] [--source-file PATH]"
+  echo "                [--source-url URL [--auth-header-env NAME]] [--source-command PATH]"
+  echo "       longboat media verify <version> <image>"
 }
 
 lb_installmedia() {
@@ -43,35 +73,160 @@ lb_installmedia() {
   exec "$LIBEXEC/installmedia" "$@"
 }
 
+sdk_usage() {
+  echo "usage: longboat sdk list"
+  echo "       longboat sdk install <version> [--pkg-only DIR]"
+  echo "       longboat sdk uninstall <version>"
+  echo "       longboat sdk fetch <version> --into DIR"
+}
+
+sdk_help() {
+  sdk_usage
+  cat <<'EOF'
+
+  list       each SDK version Longboat offers, and whether it is installed
+  install    build <version>'s SDK into a pkg and install it, as root, then print the SDK's path;
+             with --pkg-only DIR, build the pkg into DIR instead, without root
+  uninstall  remove <version>'s installed SDK, as root
+  fetch      put <version>'s SDK in DIR, without root and without installing it
+
+An installed SDK is at /usr/local/mavergreen/sdk<NNN>/SDKs/MacOSX<version>.sdk. See man longboat.
+EOF
+}
+
+# spec: tests/fetch-test.sh -- test_list_offers_10_9, test_list_says_installed: one line per offered SDK,
+#       <version> <short> installed|available; non-zero when the copied shipyard scripts cannot answer
+lb_sdk_list() {
+  _lb_offered="$(lb_offered)" || return 1
+  [ -n "$_lb_offered" ] || return 0
+  printf '%s\n' "$_lb_offered" | while read -r ver short arch dir; do
+    if [ -f "${LONGBOAT_ROOT:-}/usr/local/mavergreen/$short/mavergreen.plist" ]; then
+      echo "$ver $short installed"
+    else
+      echo "$ver $short available"
+    fi
+  done
+}
+
+# platform: install and uninstall build and remove a .pkg with installer and pkgutil, which only macOS has
+lb_macos_only() {
+  [ "$(uname -s)" = Darwin ] || {
+    echo "longboat sdk $1 needs macOS for now: it builds and installs a .pkg" >&2
+    exit 2
+  }
+}
+
+lb_sdk() {
+  case "${1:-}" in
+    list)
+      [ $# -eq 1 ] || { sdk_usage >&2; exit 2; }
+      lb_sdk_list ;;
+    fetch)
+      shift
+      lb_progress_init 1
+      lb_fetch_step 1 "$@" ;;
+    install)
+      lb_macos_only install
+      shift
+      lb_install "$@" ;;
+    uninstall)
+      lb_macos_only uninstall
+      shift
+      lb_uninstall "$@" ;;
+    --help|-h)
+      [ $# -eq 1 ] || { sdk_usage >&2; exit 2; }
+      sdk_help ;;
+    *)
+      sdk_usage >&2
+      exit 2 ;;
+  esac
+}
+
+lb_media() {
+  case "${1:-}" in
+    list|fetch|verify)
+      lb_installmedia "$@" ;;
+    --help|-h)
+      [ $# -eq 1 ] || { media_usage >&2; exit 2; }
+      lb_installmedia --help ;;
+    *)
+      media_usage >&2
+      exit 2 ;;
+  esac
+}
+
+# spec: tests/cli-test.sh test_list_table -- one row per version either word knows, numerically sorted;
+#       a word that cannot answer fails the whole list rather than printing half a table
+lb_list() {
+  _lb_sdks="$(lb_sdk_list)" || exit 1
+  [ -x "$LIBEXEC/installmedia" ] || {
+    echo "longboat: no $LIBEXEC/installmedia; build/build-installmedia.sh builds it" >&2
+    exit 1
+  }
+  _lb_media="$("$LIBEXEC/installmedia" list)" || exit 1
+  {
+    printf '%s\n' "$_lb_sdks" | awk 'NF { print $1, "sdk", $3 }'
+    printf '%s\n' "$_lb_media" | awk 'NF { print $1, "media", $2 }'
+  } | sort -t. -k1,1n -k2,2n | awk '
+    !($1 in seen) { seen[$1] = 1; order[++n] = $1 }
+    $2 == "sdk" { sdk[$1] = $3 }
+    $2 == "media" { media[$1] = ($3 == "recipe") ? "available" : "bring your own disc" }
+    END {
+      printf "%-9s%-11s%s\n", "version", "sdk", "media"
+      for (i = 1; i <= n; i++) {
+        v = order[i]
+        printf "%-9s%-11s%s\n", v, (v in sdk) ? sdk[v] : "-", (v in media) ? media[v] : "-"
+      }
+    }'
+}
+
+# spec: tests/cli-test.sh test_old_fetch_installer_withholds_the_url -- lb_moved <old words> <new words> <arg>
+#       names the move on stderr, with <arg> only when it is spelled like a version, so a secret given in
+#       the version's place is never echoed
+lb_moved() {
+  _lb_v=""
+  case "$3" in
+    [0-9]*) case "$3" in *[!0-9.]*) ;; *) _lb_v=" $3" ;; esac ;;
+  esac
+  echo "longboat: 'longboat $1$_lb_v' is now 'longboat $2$_lb_v'" >&2
+}
+
+case "${1:-}" in
+  install)
+    lb_moved install "sdk install" "${2:-}"
+    shift
+    set -- sdk install "$@" ;;
+  fetch)
+    if [ "${2:-}" = installer ]; then
+      lb_moved "fetch installer" "media fetch" "${3:-}"
+      shift 2
+      set -- media fetch "$@"
+    else
+      lb_moved fetch "sdk fetch" "${2:-}"
+      shift
+      set -- sdk fetch "$@"
+    fi ;;
+  verify)
+    if [ "${2:-}" = installer ]; then
+      lb_moved "verify installer" "media verify" "${3:-}"
+      shift 2
+      set -- media verify "$@"
+    fi ;;
+esac
+
 case "${1:-}" in
   list)
     [ $# -eq 1 ] || { usage >&2; exit 2; }
-    offered="$(lb_offered)" || exit 1
-    [ -n "$offered" ] || exit 0
-    printf '%s\n' "$offered" | while read -r ver short arch dir; do
-      if [ -f "${LONGBOAT_ROOT:-}/usr/local/mavergreen/$short/mavergreen.plist" ]; then
-        echo "$ver $short installed"
-      else
-        echo "$ver $short available"
-      fi
-    done ;;
-  fetch)
-    [ "${2:-}" != installer ] || lb_installmedia "$@"
+    lb_list ;;
+  sdk)
     shift
-    lb_progress_init 1
-    lb_fetch_step 1 "$@" ;;
-  verify)
-    [ "${2:-}" = installer ] || { usage >&2; exit 2; }
-    lb_installmedia "$@" ;;
-  install)
-    [ "$(uname -s)" = Darwin ] || {
-      echo "longboat install needs macOS: it builds and installs a .pkg. Off macOS, longboat fetches and verifies installers" >&2
-      exit 2
-    }
+    lb_sdk "$@" ;;
+  media)
     shift
-    lb_install "$@" ;;
+    lb_media "$@" ;;
   --help|-h)
-    usage ;;
+    [ $# -eq 1 ] || { usage >&2; exit 2; }
+    help ;;
   *)
     usage >&2
     exit 2 ;;

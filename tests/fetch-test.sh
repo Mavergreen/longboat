@@ -31,19 +31,19 @@ check() {
 }
 
 test_list_offers_10_9() {
-  [ "$(sh "$LB" list)" = "10.9 sdk109 available" ]
+  [ "$(sh "$LB" sdk list)" = "10.9 sdk109 available" ]
 }
 
 test_list_says_installed() {
   mkdir -p "$T/installed/usr/local/mavergreen/sdk109"
   : > "$T/installed/usr/local/mavergreen/sdk109/mavergreen.plist"
-  [ "$(LONGBOAT_ROOT="$T/installed" sh "$LB" list)" = "10.9 sdk109 installed" ]
+  [ "$(LONGBOAT_ROOT="$T/installed" sh "$LB" sdk list)" = "10.9 sdk109 installed" ]
 }
 
 test_list_hides_unregistered() {
-  [ -z "$(MAVERGREEN_PRODUCT_NAMES="$T/without-sdk109" sh "$LB" list)" ] || return 1
+  [ -z "$(MAVERGREEN_PRODUCT_NAMES="$T/without-sdk109" sh "$LB" sdk list)" ] || return 1
   cat "$T/without-sdk109" "$T/with-sdk109" > "$T/without-plus-sdk109"
-  [ "$(MAVERGREEN_PRODUCT_NAMES="$T/without-plus-sdk109" sh "$LB" list)" = "10.9 sdk109 available" ] \
+  [ "$(MAVERGREEN_PRODUCT_NAMES="$T/without-plus-sdk109" sh "$LB" sdk list)" = "10.9 sdk109 available" ] \
     || { echo "the same registry plus an sdk109 line must offer 10.9, or hiding proves nothing" >&2; return 1; }
 }
 
@@ -56,12 +56,12 @@ test_list_fails_on_broken_shipyard() {
   make_broken_shipyards
   for d in "$T/empty-shipyard" "$T/no-product-name"; do
     rc=0
-    LONGBOAT_SHIPYARD_DIR="$d" sh "$LB" list >"$T/bout" 2>"$T/berr" || rc=$?
+    LONGBOAT_SHIPYARD_DIR="$d" sh "$LB" sdk list >"$T/bout" 2>"$T/berr" || rc=$?
     [ "$rc" -ne 0 ] && [ ! -s "$T/bout" ] && [ -s "$T/berr" ] \
       || { echo "list with a broken shipyard dir $d exited $rc and said nothing on stderr" >&2; return 1; }
   done
   rc=0
-  MAVERGREEN_PRODUCT_NAMES="$T/no-such-registry" sh "$LB" list >"$T/bout" 2>"$T/berr" || rc=$?
+  MAVERGREEN_PRODUCT_NAMES="$T/no-such-registry" sh "$LB" sdk list >"$T/bout" 2>"$T/berr" || rc=$?
   [ "$rc" -ne 0 ] && [ ! -s "$T/bout" ] && [ -s "$T/berr" ] \
     || { echo "list with an unreadable registry exited $rc" >&2; return 1; }
 }
@@ -69,8 +69,8 @@ test_list_fails_on_broken_shipyard() {
 test_fetch_on_broken_shipyard_is_not_unknown() {
   make_broken_shipyards
   rc=0
-  LONGBOAT_SHIPYARD_DIR="$T/empty-shipyard" sh "$LB" fetch 10.9 --into "$T/brokenfetch" >/dev/null 2>"$T/berr" || rc=$?
-  [ "$rc" -eq 1 ] && [ -s "$T/berr" ] && [ -z "$(grep "unknown SDK" "$T/berr")" ] \
+  LONGBOAT_SHIPYARD_DIR="$T/empty-shipyard" sh "$LB" sdk fetch 10.9 --into "$T/brokenfetch" >/dev/null 2>"$T/berr" || rc=$?
+  [ "$rc" -eq 1 ] && [ -s "$T/berr" ] && [ -z "$(grep "no SDK for version" "$T/berr")" ] \
     || { echo "a broken shipyard dir must fail as an error (1), not as an unknown SDK; got $rc: $(cat "$T/berr")" >&2; return 1; }
 }
 
@@ -85,38 +85,67 @@ test_usage_error_on_stderr() {
   [ "$rc" -eq 2 ] && [ ! -s "$T/uout" ] && grep -q 'install <version> \[--pkg-only DIR\]' "$T/uerr"
 }
 
+# spec: src/longboat lb_sdk, sdk_usage -- the sdk word carries only its own verbs; misuse prints
+#       its usage on stderr, exit 2, and runs nothing
+test_sdk_without_verb_is_usage() {
+  for args in "sdk" "sdk frob" "sdk verify 10.9 x"; do
+    rc=0
+    # shellcheck disable=SC2086
+    sh "$LB" $args >"$T/sout" 2>"$T/serr" || rc=$?
+    [ "$rc" -eq 2 ] && [ ! -s "$T/sout" ] && grep -q 'longboat sdk list' "$T/serr" \
+      || { echo "longboat $args exited $rc, stdout '$(cat "$T/sout")', stderr '$(cat "$T/serr")'" >&2; return 1; }
+  done
+}
+
+test_sdk_help_names_only_sdk_verbs() {
+  sh "$LB" sdk --help >"$T/shelp" 2>"$T/sherr" || return 1
+  [ ! -s "$T/sherr" ] || return 1
+  for v in 'longboat sdk list' 'longboat sdk install <version>' 'longboat sdk uninstall <version>' \
+      'longboat sdk fetch <version> --into DIR'; do
+    grep -qF "$v" "$T/shelp" || { echo "sdk --help does not name '$v'" >&2; return 1; }
+  done
+  ! grep -q 'media' "$T/shelp" || { echo "sdk --help names media" >&2; return 1; }
+}
+
+test_sdk_unknown_version_names_sdk_versions() {
+  rc=0
+  sh "$LB" sdk fetch 10.6 --into "$T/unk6" >/dev/null 2>"$T/err6" || rc=$?
+  [ "$rc" -eq 2 ] && grep -q "longboat: no SDK for version '10.6'; offered: 10.9$" "$T/err6" \
+    || { echo "sdk fetch 10.6 exited $rc: $(cat "$T/err6")" >&2; return 1; }
+}
+
 test_fetch_extracts() {
-  out=$(sh "$LB" fetch 10.9 --into "$T/out")
+  out=$(sh "$LB" sdk fetch 10.9 --into "$T/out")
   [ "$out" = "$T/out/MacOSX10.9.sdk" ] && [ -f "$T/out/MacOSX10.9.sdk/usr/include/stdio.h" ]
 }
 
 test_fetch_mismatch_leaves_nothing() {
   if MAVERICKS_SDK_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
-      sh "$LB" fetch 10.9 --into "$T/bad" >/dev/null 2>&1; then
+      sh "$LB" sdk fetch 10.9 --into "$T/bad" >/dev/null 2>&1; then
     return 1
   fi
-  [ ! -e "$T/bad/MacOSX10.9.sdk" ] && sh "$LB" fetch 10.9 --into "$T/bad" >/dev/null
+  [ ! -e "$T/bad/MacOSX10.9.sdk" ] && sh "$LB" sdk fetch 10.9 --into "$T/bad" >/dev/null
 }
 
 test_fetch_reuses_cache_offline() {
   cp "$T/served/MacOSX10.9.sdk.tar.xz" "$T/keep.tar.xz"
-  sh "$LB" fetch 10.9 --into "$T/cached" >/dev/null
+  sh "$LB" sdk fetch 10.9 --into "$T/cached" >/dev/null
   rm "$T/served/MacOSX10.9.sdk.tar.xz"
   rc=0
-  sh "$LB" fetch 10.9 --into "$T/cached" >/dev/null || rc=1
+  sh "$LB" sdk fetch 10.9 --into "$T/cached" >/dev/null || rc=1
   cp "$T/keep.tar.xz" "$T/served/MacOSX10.9.sdk.tar.xz"
   [ "$rc" -eq 0 ]
 }
 
 test_fetch_shows_its_step() {
   rm -rf "$T/step"
-  out=$(sh "$LB" fetch 10.9 --into "$T/step" 2>"$T/steperr")
+  out=$(sh "$LB" sdk fetch 10.9 --into "$T/step" 2>"$T/steperr")
   [ "$out" = "$T/step/MacOSX10.9.sdk" ] || return 1
   grep -q '^\[1/1\] fetching the 10\.9 SDK\.\.\.$' "$T/steperr" \
     && grep -q '^\[1/1\] fetching the 10\.9 SDK: done (' "$T/steperr" \
     || { cat "$T/steperr" >&2; return 1; }
   [ -z "$(grep "$(printf '\r')" "$T/steperr")" ] || { echo "a log must never carry a CR" >&2; return 1; }
-  sh "$LB" fetch 10.9 --into "$T/step" 2>"$T/steperr2" >/dev/null
+  sh "$LB" sdk fetch 10.9 --into "$T/step" 2>"$T/steperr2" >/dev/null
   grep -q '^\[1/1\] fetching the 10\.9 SDK: cached$' "$T/steperr2" || { cat "$T/steperr2" >&2; return 1; }
 }
 
@@ -124,7 +153,7 @@ test_fetch_stdout_is_only_the_path_at_a_terminal() {
   [ "$(uname)" = Darwin ] || { echo "skip: needs BSD script(1)" >&2; return 0; }
   rm -rf "$T/tty"
   # platform: BSD script(1) gives the command a terminal on stderr; GNU script has other flags.
-  script -q /dev/null sh -c 'p="$(sh "$1" fetch 10.9 --into "$2")"; printf "PATH=%s\n" "$p"' sh "$LB" "$T/tty" >"$T/ttyout" 2>&1 || true
+  script -q /dev/null sh -c 'p="$(sh "$1" sdk fetch 10.9 --into "$2")"; printf "PATH=%s\n" "$p"' sh "$LB" "$T/tty" >"$T/ttyout" 2>&1 || true
   tr -d '\r' < "$T/ttyout" > "$T/ttyout.clean"
   grep -qx "PATH=$T/tty/MacOSX10.9.sdk" "$T/ttyout.clean" || { cat "$T/ttyout.clean" >&2; return 1; }
   # spec: src/progress.sh lb_step_end -- only at a terminal is the step's line redrawn with a CR; in a log
@@ -136,14 +165,14 @@ test_fetch_stdout_is_only_the_path_at_a_terminal() {
 test_unknown_sdk() {
   for v in 10.6 10.9.5 MacOSX10.9.sdk ""; do
     rc=0
-    sh "$LB" fetch "$v" --into "$T/unk" 2>"$T/err" >/dev/null || rc=$?
+    sh "$LB" sdk fetch "$v" --into "$T/unk" 2>"$T/err" >/dev/null || rc=$?
     [ "$rc" -eq 2 ] && grep -q '10\.9' "$T/err" || return 1
   done
 }
 
 test_paths_with_spaces() {
   mkdir -p "$T/tmp space"
-  out=$(TMPDIR="$T/tmp space" sh "$LB" fetch 10.9 --into "$T/with space")
+  out=$(TMPDIR="$T/tmp space" sh "$LB" sdk fetch 10.9 --into "$T/with space")
   [ "$out" = "$T/with space/MacOSX10.9.sdk" ] && [ -f "$out/usr/include/stdio.h" ]
 }
 
@@ -151,12 +180,12 @@ test_runs_through_symlink() {
   mkdir -p "$T/farm/bin" "$T/farm/longboat/bin"
   cp "$LB" "$T/farm/longboat/bin/longboat"
   mkdir -p "$T/farm/longboat/libexec/longboat"
-  cp "$root"/src/sdks.sh "$root"/src/progress.sh "$root"/src/fetch.sh "$root"/src/install.sh "$T/farm/longboat/libexec/longboat/"
+  cp "$root"/src/sdks.sh "$root"/src/progress.sh "$root"/src/fetch.sh "$root"/src/install.sh "$root"/src/uninstall.sh "$T/farm/longboat/libexec/longboat/"
   ln -s ../longboat/bin/longboat "$T/farm/bin/longboat"
-  sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" list | grep -qx '10.9 sdk109 available'
+  sh "$T/farm/bin/longboat" --help >/dev/null 2>&1 && sh "$T/farm/bin/longboat" sdk list | grep -qx '10.9 sdk109 available'
 }
 
-for t in test_list_offers_10_9 test_list_says_installed test_list_hides_unregistered test_list_fails_on_broken_shipyard \
+for t in test_sdk_without_verb_is_usage test_sdk_help_names_only_sdk_verbs test_sdk_unknown_version_names_sdk_versions test_list_offers_10_9 test_list_says_installed test_list_hides_unregistered test_list_fails_on_broken_shipyard \
     test_fetch_on_broken_shipyard_is_not_unknown test_help_on_stdout test_usage_error_on_stderr \
     test_fetch_extracts test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
     test_fetch_shows_its_step test_fetch_stdout_is_only_the_path_at_a_terminal test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do

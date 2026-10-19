@@ -70,7 +70,7 @@ func Lookup(name string) (Release, error) {
 		}
 		names = append(names, r.Name)
 	}
-	return Release{}, fmt.Errorf("no release %q: this module knows %s", name, strings.Join(names, ", "))
+	return Release{}, fmt.Errorf("no version %q: this module knows %s", name, strings.Join(names, ", "))
 }
 
 func releases() ([]Release, error) {

@@ -34,24 +34,24 @@ lb_install() {
   _lb_ver="" _lb_pkgonly=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --pkg-only) [ $# -ge 2 ] && [ -n "$2" ] || { echo "usage: longboat install <version> [--pkg-only DIR]" >&2; return 2; }
+      --pkg-only) [ $# -ge 2 ] && [ -n "$2" ] || { echo "usage: longboat sdk install <version> [--pkg-only DIR]" >&2; return 2; }
         _lb_pkgonly="$2"; shift 2 ;;
-      -*) echo "usage: longboat install <version> [--pkg-only DIR]" >&2; return 2 ;;
-      *) [ -z "$_lb_ver" ] || { echo "usage: longboat install <version> [--pkg-only DIR]" >&2; return 2; }
+      -*) echo "usage: longboat sdk install <version> [--pkg-only DIR]" >&2; return 2 ;;
+      *) [ -z "$_lb_ver" ] || { echo "usage: longboat sdk install <version> [--pkg-only DIR]" >&2; return 2; }
         _lb_ver="$1"; shift ;;
     esac
   done
-  [ -n "$_lb_ver" ] || { echo "usage: longboat install <version> [--pkg-only DIR]" >&2; return 2; }
+  [ -n "$_lb_ver" ] || { echo "usage: longboat sdk install <version> [--pkg-only DIR]" >&2; return 2; }
   _lb_line="$(lb_lookup "$_lb_ver")" || {
     [ $? -eq 1 ] || return 1
-    echo "longboat: unknown SDK '$_lb_ver'; offered: $(lb_offered_versions)" >&2
+    echo "longboat: no SDK for version '$_lb_ver'; offered: $(lb_offered_versions)" >&2
     return 2
   }
   set -- $_lb_line
   _lb_short="$2" _lb_sdkdir="$4"
 
   if [ -z "$_lb_pkgonly" ] && [ "$(id -u)" -ne 0 ]; then
-    echo "longboat: installing an SDK needs root: sudo longboat install $_lb_ver" >&2
+    echo "longboat: installing an SDK needs root: sudo longboat sdk install $_lb_ver" >&2
     return 2
   fi
   _lb_lbver="$(lb_own_version)" || {

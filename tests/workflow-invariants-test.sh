@@ -177,15 +177,15 @@ linux_job_smokes_the_tarball() {
     grep -qxF -- "$want" "$T/smoke" \
       || { echo "the tarball step must run $want" >&2; return 1; }
   done
-  followed_by "$T/smoke" 'rc=0; "$lb" verify installer 10.6 /dev/null 2>"$x/err" || rc=$?' \
+  followed_by "$T/smoke" 'rc=0; "$lb" media verify 10.6 /dev/null 2>"$x/err" || rc=$?' \
     '[ "$rc" -eq 1 ] && grep -q '"'"'not a disc image'"'"' "$x/err" || {' \
-    || { echo "the tarball step must run verify installer 10.6 /dev/null and want exit 1 and 'not a disc image'" >&2; return 1; }
-  followed_by "$T/smoke" 'rc=0; "$lb" fetch installer 10.6 --into "$RUNNER_TEMP/x" || rc=$?' \
+    || { echo "the tarball step must run media verify 10.6 /dev/null and want exit 1 and 'not a disc image'" >&2; return 1; }
+  followed_by "$T/smoke" 'rc=0; "$lb" media fetch 10.6 --into "$RUNNER_TEMP/x" || rc=$?' \
     '[ "$rc" -eq 2 ] || {' \
-    || { echo "the tarball step must run fetch installer 10.6 with no source and want exit 2" >&2; return 1; }
-  followed_by "$T/smoke" 'rc=0; "$lb" install 10.9 2>"$x/err" || rc=$?' \
-    '[ "$rc" -eq 2 ] && grep -q '"'"'longboat install needs macOS'"'"' "$x/err" || {' \
-    || { echo "the tarball step must run install 10.9 and want exit 2 and 'longboat install needs macOS'" >&2; return 1; }
+    || { echo "the tarball step must run media fetch 10.6 with no source and want exit 2" >&2; return 1; }
+  followed_by "$T/smoke" 'rc=0; "$lb" sdk install 10.9 2>"$x/err" || rc=$?' \
+    '[ "$rc" -eq 2 ] && grep -q '"'"'longboat sdk install needs macOS for now'"'"' "$x/err" || {' \
+    || { echo "the tarball step must run sdk install 10.9 and want exit 2 and 'longboat sdk install needs macOS for now'" >&2; return 1; }
 }
 
 reconcile_dispatches_a_declared_input() {
@@ -432,17 +432,17 @@ mutant tarball-other-artifact "$REL" awk '/^  [^ ]/ { j = $0 } { if (j == "  lin
 refuses "a linux-tarball job that downloads another artifact" linux_job_smokes_the_tarball "$m"
 mutant verify-wants-0 "$REL" sed 's/-eq 1 \] && grep -q .not a disc image./-eq 0 ] \&\& grep -q "not a disc image"/'
 refuses "a verify that wants exit 0" linux_job_smokes_the_tarball "$m"
-mutant fetch-wants-0 "$REL" sed 's/\[ "\$rc" -eq 2 \] || { echo "::error::fetch/[ "$rc" -eq 0 ] || { echo "::error::fetch/'
+mutant fetch-wants-0 "$REL" sed 's/\[ "\$rc" -eq 2 \] || { echo "::error::media fetch/[ "$rc" -eq 0 ] || { echo "::error::media fetch/'
 refuses "a fetch with no source that wants exit 0" linux_job_smokes_the_tarball "$m"
-mutant install-wants-0 "$REL" sed 's/-eq 2 \] && grep -q .longboat install needs macOS./-eq 0 ] \&\& grep -q "longboat install needs macOS"/'
+mutant install-wants-0 "$REL" sed 's/-eq 2 \] && grep -q .longboat sdk install needs macOS for now./-eq 0 ] \&\& grep -q "longboat sdk install needs macOS for now"/'
 refuses "an install that wants exit 0" linux_job_smokes_the_tarball "$m"
-mutant no-install "$REL" sed '/"\$lb" install 10\.9/d'
+mutant no-install "$REL" sed '/"\$lb" sdk install 10\.9/d'
 refuses "a tarball step that never runs install" linux_job_smokes_the_tarball "$m"
 mutant smoke-first "$REL" move_step "The Linux tarball runs here" "Download the build's artifact"
 refuses "a tarball step before the download" linux_job_smokes_the_tarball "$m"
-mutant smoke-no-verify "$REL" sed '/verify installer 10\.6 \/dev\/null/d'
+mutant smoke-no-verify "$REL" sed '/media verify 10\.6 \/dev\/null/d'
 refuses "a tarball step that never verifies" linux_job_smokes_the_tarball "$m"
-mutant smoke-no-fetch "$REL" sed '/fetch installer 10\.6 --into/d'
+mutant smoke-no-fetch "$REL" sed '/media fetch 10\.6 --into/d'
 refuses "a tarball step that never fetches" linux_job_smokes_the_tarball "$m"
 mutant smoke-no-help "$REL" sed '/"\$lb" --help/d'
 refuses "a tarball step that never runs --help" linux_job_smokes_the_tarball "$m"
