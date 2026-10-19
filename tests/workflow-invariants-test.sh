@@ -144,7 +144,7 @@ build_packs_the_linux_tarball() {
   uploads_the_tarball "$1" build && uploads_the_tarball "$1" collect
 }
 
-# spec: README.md "On Linux" -- $1 is the tarball step with its continuation lines joined, its leading
+# spec: docs/DEVELOPING.md "The Linux tarball" -- $1 is the tarball step with its continuation lines joined, its leading
 #       blanks and its cat "$x/err" lines dropped; $2 is a command, and $3 the check that must follow it
 followed_by() {
   CMD="$2" CHECK="$3" awk 'BEGIN { c = ENVIRON["CMD"]; e = ENVIRON["CHECK"] }

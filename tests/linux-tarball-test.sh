@@ -39,12 +39,14 @@ stage() {
       list="$list
 libexec/longboat/$f=$root/src/$f"
     done
+    list="$list
+share/man/man1/longboat.1=$root/docs/longboat.1"
     printf '%s\n' "$list" > "$B.list"
     if [ "$4" = reverse ]; then
       sed -n '1!G;h;$p' "$B.list" > "$B.rev"
       mv "$B.rev" "$B.list"
     fi
-    mkdir -p "$R/usr/local/mavergreen/longboat/bin" "$L/shipyard/templates"
+    mkdir -p "$R/usr/local/mavergreen/longboat/bin" "$R/usr/local/mavergreen/longboat/share/man/man1" "$L/shipyard/templates"
     while IFS= read -r pair; do
       cp "${pair#*=}" "$R/usr/local/mavergreen/longboat/${pair%%=*}"
     done < "$B.list"
@@ -96,7 +98,8 @@ test_everything_is_under_the_prefix() {
   [ -s "$T/list" ] || { echo "the tarball lists nothing" >&2; return 1; }
   if grep -v "^$P/" "$T/list" >&2; then echo "^ outside $P/" >&2; return 1; fi
   for want in "$P/bin/longboat" "$P/libexec/longboat/installmedia" "$P/libexec/longboat/fetch.sh" \
-              "$P/libexec/longboat/VERSION" "$P/libexec/longboat/shipyard/product-names"; do
+              "$P/libexec/longboat/VERSION" "$P/libexec/longboat/shipyard/product-names" \
+              "$P/share/man/man1/longboat.1"; do
     grep -qx "$want" "$T/list" || { echo "no $want in the tarball" >&2; return 1; }
   done
 }

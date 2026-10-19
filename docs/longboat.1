@@ -1,0 +1,228 @@
+.Dd October 19, 2026
+.Dt LONGBOAT 1
+.Os Mavergreen
+.Sh NAME
+.Nm longboat
+.Nd get an SDK, or install media, for a particular OS X
+.Sh SYNOPSIS
+.Nm longboat
+.Cm list
+.Nm longboat
+.Cm sdk list
+.Nm longboat
+.Cm sdk install
+.Ar version
+.Op Fl \-pkg\-only Ar DIR
+.Nm longboat
+.Cm sdk uninstall
+.Ar version
+.Nm longboat
+.Cm sdk fetch
+.Ar version
+.Fl \-into Ar DIR
+.Nm longboat
+.Cm media list
+.Nm longboat
+.Cm media fetch
+.Ar version
+.Fl \-into Ar DIR
+.Op Fl \-source\-recipe
+.Op Fl \-source\-file Ar PATH
+.Op Fl \-source\-url Ar URL Op Fl \-auth\-header\-env Ar NAME
+.Op Fl \-source\-command Ar PATH
+.Nm longboat
+.Cm media verify
+.Ar version
+.Ar image
+.Sh DESCRIPTION
+.Nm
+does two jobs, each for a particular OS X version such as 10.6, 10.9 or 11.3:
+.Bl -bullet
+.It
+.Cm sdk
+puts that version's SDK on this machine, so a compiler can build against it, for example with
+.Ql clang -isysroot /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk .
+.It
+.Cm media
+downloads that version's install media to this machine, held to its pins, for building a virtual
+machine from.
+.El
+.Pp
+.Nm
+is an unofficial community tool, not affiliated with Apple.
+SDKs are fetched from third-party mirrors onto your own machine and never redistributed.
+.Pp
+Each word has its own help:
+.Dl longboat \-\-help | longboat sdk \-\-help | longboat media \-\-help
+.Sh COMMANDS
+.Bl -tag -width Ds
+.It Nm Cm list
+One line per OS X version either job knows: whether its SDK is
+.Ql installed ,
+.Ql available
+or not offered
+.Pq Ql \- ,
+and whether its install media is
+.Ql available
+from a built-in recipe,
+.Ql bring your own disc ,
+or not known
+.Pq Ql \- .
+.It Nm Cm sdk list
+One line per SDK version offered:
+.Ar version short-name
+.Cm installed | available .
+.It Nm Cm sdk install Ar version Op Fl \-pkg\-only Ar DIR
+Fetch the version's pinned SDK, check it against its SHA-256, build it into a package and install it.
+Needs root and macOS.
+Prints only the installed SDK's path on standard output, so
+.Ql "$(sudo longboat sdk install 10.9)"
+is that path.
+With
+.Fl \-pkg\-only Ar DIR ,
+builds the package into
+.Ar DIR
+instead, without root, and prints its path.
+.It Nm Cm sdk uninstall Ar version
+Remove the installed SDK, with the
+.Xr mavergreen 1
+helper's
+.Cm uninstall .
+Needs root and macOS.
+.It Nm Cm sdk fetch Ar version Fl \-into Ar DIR
+Put the version's SDK in
+.Ar DIR ,
+checked against its SHA-256, without root and without installing it, and print its path.
+A second run with the same
+.Ar DIR
+uses what is there.
+.It Nm Cm media list
+One line per version whose install media
+.Nm
+knows:
+.Ar version
+.Cm recipe | bring-your-own .
+.It Nm Cm media fetch Ar version Fl \-into Ar DIR Op Ar sources
+Put the version's install media in
+.Ar DIR ,
+as
+.Pa InstallESD.dmg
+(10.9) or
+.Pa install-disc.img
+(10.6), and print its path.
+Nothing takes that name until it has passed the version's pins.
+See
+.Sx MEDIA SOURCES .
+.It Nm Cm media verify Ar version Ar image
+Hold an image you already have to the version's pins, and print
+.Ar version build content-digest .
+.El
+.Sh MEDIA SOURCES
+.Cm media fetch
+tries its sources in the order given, keeps the first whose media passes the version's pins, and
+accepts each flag more than once.
+With no source flag it uses the built-in recipe.
+.Bl -tag -width Ds
+.It Fl \-source\-recipe
+The version's built-in recipe.
+10.9's downloads
+.Pa InstallESD.dmg
+from Apple's servers.
+10.6 has none: Apple does not serve it, so bring an image of a retail Snow Leopard DVD.
+.It Fl \-source\-file Ar PATH
+An image on this machine.
+.It Fl \-source\-url Ar URL Op Fl \-auth\-header\-env Ar NAME
+An image to download.
+The request's header, written
+.Ql Name: value ,
+comes from the environment variable
+.Ar NAME ,
+never from the command line.
+Neither the URL nor the header is ever printed.
+.It Fl \-source\-command Ar PATH
+A program on this machine, run with a stripped environment and given, as its last argument, a
+directory to write exactly one image into.
+.El
+.Pp
+Media is trusted by what it holds, never by where it came from: 10.9's
+.Pa InstallESD.dmg
+by its SHA-256, and a 10.6 disc by the SHA-256 of every package on it, so any faithful copy passes,
+whatever made the image (an ISO, a Disk Utility .dmg or .cdr).
+.Sh ENVIRONMENT
+.Bl -tag -width Ds
+.It Ar NAME
+The variable
+.Fl \-auth\-header\-env Ar NAME
+names holds a download's
+.Ql Name: value
+header.
+.It Ev TMPDIR
+Where
+.Cm sdk install
+builds its package.
+.El
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk
+The 10.9 SDK, once installed; it exists exactly when
+.Ql sdk109
+is installed.
+Each SDK has its own tree,
+.Pa /usr/local/mavergreen/sdk Ns Ar NNN ,
+its version without the dot; 11.3's is
+.Pa /usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk .
+.It Pa /usr/local/mavergreen/var/longboat
+Where
+.Cm sdk install
+keeps the SDK downloads it has checked.
+.It Pa /usr/local/mavergreen/longboat
+.Nm
+itself, on a Mac.
+On Linux it runs from wherever its tarball is unpacked, under
+.Pa opt/mavergreen/longboat .
+.El
+.Sh EXIT STATUS
+.Bl -tag -width Ds -compact
+.It 0
+All is well.
+.It 1
+Refused or failed: media that does not pass its pins, a download that fails, an SDK that is not
+installed, a broken installation of
+.Nm .
+.It 2
+A usage error, an unknown version, a command that needs root or macOS run without it.
+.El
+.Sh COMPATIBILITY
+On Linux,
+.Cm list ,
+.Cm sdk list ,
+.Cm sdk fetch
+and every
+.Cm media
+command work.
+.Cm sdk fetch
+needs
+.Xr curl 1 ,
+.Xr xz 1
+and
+.Xr shasum 1 .
+.Cm sdk install
+and
+.Cm sdk uninstall
+need macOS for now, and say so.
+.Pp
+Earlier releases spelled the commands differently.
+These still work, after one line on standard error naming the new form:
+.Bl -column "longboat verify installer" "longboat media verify" -offset indent
+.It Sy Old Ta Sy Now
+.It longboat install Ta longboat sdk install
+.It longboat fetch Ar version Ta longboat sdk fetch
+.It longboat fetch installer Ta longboat media fetch
+.It longboat verify installer Ta longboat media verify
+.El
+.Sh SEE ALSO
+.Xr clang 1 ,
+.Xr mavergreen 1 ,
+.Xr packer 1
+.Pp
+.Lk https://github.com/Mavergreen/longboat

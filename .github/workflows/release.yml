@@ -111,7 +111,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: sh build/package.sh
-      # spec: README.md "On Linux" -- every entry's mtime is HEAD's commit time, so with the family's pinned
+      # spec: docs/DEVELOPING.md "The Linux tarball" -- every entry's mtime is HEAD's commit time, so with the family's pinned
       #       Go (components/golang/version) a commit packs to the same tarball wherever and whenever it is built
       - name: Package for Linux
         run: |

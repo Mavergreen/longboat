@@ -34,6 +34,11 @@ test_payload_has_cli() {
   [ "$(cat "$L/libexec/longboat/VERSION")" = "$ver" ]
 }
 
+# spec: docs/longboat.1 -- the pkg ships the manual page where the mavergreen helper links share/man from
+test_payload_has_manpage() {
+  cmp -s "$L/share/man/man1/longboat.1" "$root/docs/longboat.1"
+}
+
 test_payload_has_installmedia() {
   f="$L/libexec/longboat/installmedia"
   [ -f "$f" ] || { echo "no libexec/longboat/installmedia in the payload" >&2; return 1; }
@@ -58,7 +63,7 @@ test_shipyard_version_staged() {
 
 test_installed_cli_runs() {
   mkdir "$T/lbroot"
-  env -u LONGBOAT_SHIPYARD_DIR LONGBOAT_ROOT="$T/lbroot" sh "$L/bin/longboat" list > "$T/list" 2>"$T/listerr" || { cat "$T/listerr" >&2; return 1; }
+  env -u LONGBOAT_SHIPYARD_DIR LONGBOAT_ROOT="$T/lbroot" sh "$L/bin/longboat" sdk list > "$T/list" 2>"$T/listerr" || { cat "$T/listerr" >&2; return 1; }
   grep -qx '10.9 sdk109 available' "$T/list"
 }
 
@@ -69,7 +74,7 @@ test_installed_cli_help() {
 test_farm_symlink_runs() {
   mkdir -p "$T/p/usr/local/mavergreen/bin" "$T/lbroot2"
   ln -s ../longboat/bin/longboat "$T/p/usr/local/mavergreen/bin/longboat"
-  env -u LONGBOAT_SHIPYARD_DIR LONGBOAT_ROOT="$T/lbroot2" sh "$T/p/usr/local/mavergreen/bin/longboat" list > "$T/list2" 2>"$T/listerr2" || { cat "$T/listerr2" >&2; return 1; }
+  env -u LONGBOAT_SHIPYARD_DIR LONGBOAT_ROOT="$T/lbroot2" sh "$T/p/usr/local/mavergreen/bin/longboat" sdk list > "$T/list2" 2>"$T/listerr2" || { cat "$T/listerr2" >&2; return 1; }
   grep -qx '10.9 sdk109 available' "$T/list2" \
     && env -u LONGBOAT_SHIPYARD_DIR sh "$T/p/usr/local/mavergreen/bin/longboat" --help >/dev/null 2>&1
 }
@@ -109,6 +114,7 @@ test_shipped_set_installs() {
 }
 
 check test_payload_has_cli
+check test_payload_has_manpage
 check test_payload_has_installmedia
 check test_base_is_the_packaging_shipyards
 check test_shipped_set_installs
