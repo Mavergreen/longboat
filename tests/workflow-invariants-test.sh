@@ -246,6 +246,29 @@ bot_digest_job_runs_on_linux() {
     || { echo "the digest job must install libarchive-tools (bsdtar) before digest-bot.sh fill unpacks the pkg" >&2; return 1; }
 }
 
+# spec: shipyard check 29 -- the run's own pkg is installed and run on Mac OS X 10.9 before publish;
+#       the guest runs on a Linux runner, so it spends none of the org's macOS runners
+vm_test_installs_the_runs_pkg_on_10_9() {
+  job "$1" vm-test > "$T/vm"
+  [ -s "$T/vm" ] || { echo "release.yml has no vm-test job" >&2; return 1; }
+  grep -qx '    runs-on: ubuntu-latest' "$T/vm" \
+    || { echo "the vm-test job must run on ubuntu-latest: mavericks-vm boots its guest under KVM there" >&2; return 1; }
+  grep -Eqx '    needs: \[.*build.*\]' "$T/vm" && grep -Eqx '    needs: \[.*ver.*\]' "$T/vm" \
+    || { echo "the vm-test job must need build (its pkg) and ver (its version)" >&2; return 1; }
+  grep -q 'name: dist-longboat' "$T/vm" \
+    || { echo "the vm-test job must download the build's dist-longboat artifact, this run's own pkg" >&2; return 1; }
+  grep -q 'uses: Mavergreen/mavericks-vm@v1' "$T/vm" \
+    && grep -qx '          image-key: ${{ secrets.MAVERICKS_VM_KEY }}' "$T/vm" \
+    || { echo "the vm-test job must run its guest with Mavergreen/mavericks-vm@v1 and MAVERICKS_VM_KEY" >&2; return 1; }
+  grep -q 'run: sh build/vm-acceptance.sh "dist/longboat-\$LONGBOAT_VERSION_UNDER_TEST.pkg" "\$LONGBOAT_VERSION_UNDER_TEST"' "$T/vm" \
+    || { echo "the guest must run build/vm-acceptance.sh on this run's pkg and version" >&2; return 1; }
+}
+
+publish_needs_vm_test() {
+  job "$1" publish | grep -Eqx '    needs: \[(.*, )?vm-test(, .*)?\]' \
+    || { echo "publish must need vm-test, or a pkg that fails on 10.9 publishes" >&2; return 1; }
+}
+
 no_expressions_in_run_blocks() {
   awk '{ match($0, /^ */); ind = RLENGTH }
        inrun && (ind > runind || $0 ~ /^ *$/) { if (index($0, "${{")) { print NR ": " $0; bad = 1 } next }
@@ -292,6 +315,8 @@ mutant() {
 expect no_pull_request_target "$REL"
 expect top_level_contents_read "$REL"
 expect publish_writes_contents "$REL"
+expect vm_test_installs_the_runs_pkg_on_10_9 "$REL"
+expect publish_needs_vm_test "$REL"
 expect every_checkout_drops_credentials "$REL"
 expect ver_step_asks_release_needed_on_push_too "$REL"
 expect no_tags_trigger "$WF"/*.yml
@@ -343,6 +368,14 @@ mutant digest-on-macos "$BOT" awk '!d && $0 == "    runs-on: ubuntu-latest" { pr
 refuses "a digest job on a macOS runner" bot_digest_job_runs_on_linux "$m"
 mutant digest-no-bsdtar "$BOT" sed '/libarchive-tools/d'
 refuses "a digest job that unpacks the pkg without installing bsdtar" bot_digest_job_runs_on_linux "$m"
+mutant publish-no-vm "$REL" sed 's/^    needs: \[ver, collect, scan, vm-test\]$/    needs: [ver, collect, scan]/'
+refuses "a publish that does not wait for vm-test" publish_needs_vm_test "$m"
+mutant vm-on-macos "$REL" awk '/^  vm-test:$/ { v = 1 } v && $0 == "    runs-on: ubuntu-latest" { print "    runs-on: macos-26"; v = 0; next } { print }'
+refuses "a vm-test job on a macOS runner" vm_test_installs_the_runs_pkg_on_10_9 "$m"
+mutant vm-no-acceptance "$REL" sed 's|run: sh build/vm-acceptance.sh|run: sw_vers; sh build/vm-acceptance.sh-not|'
+refuses "a guest that never runs the acceptance script" vm_test_installs_the_runs_pkg_on_10_9 "$m"
+mutant vm-no-pkg "$REL" sed '/^  vm-test:$/,/^  [a-z]/ s/name: dist-longboat/name: some-other-artifact/'
+refuses "a vm-test job that tests some other artifact" vm_test_installs_the_runs_pkg_on_10_9 "$m"
 mutant build-skips "$REL" sed '/^    if: \${{ !cancelled() }}$/d'
 refuses "a required build that is skipped when ver fails" required_check_fails_when_ver_fails "$m"
 mutant build-no-guard "$REL" sed 's/needs\.ver\.result/needs.ver.outputs.version/'

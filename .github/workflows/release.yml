@@ -208,6 +208,31 @@ jobs:
           [ "$rc" -eq 2 ] && grep -q 'longboat install needs macOS' "$x/err" \
             || { echo "::error::install 10.9 exited $rc on Linux, want 2 and 'longboat install needs macOS'"; exit 1; }
 
+  # spec: shipyard check 29 -- this run's own pkg, installed on Mac OS X 10.9 and run there before publish;
+  #       build/vm-acceptance.sh installs the real 10.9 SDK with it and uninstalls both
+  # platform: mavericks-vm boots its 10.9 guest under KVM on a Linux runner, so this job spends no macOS
+  #           runner; packages: write is the guest image's, which mavericks-vm pulls from GHCR
+  vm-test:
+    needs: [ver, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v8
+        with: { name: dist-longboat, path: dist }
+      - name: Install this run's pkg on Mac OS X 10.9 and install the 10.9 SDK with it
+        uses: Mavergreen/mavericks-vm@v1
+        env:
+          LONGBOAT_VERSION_UNDER_TEST: ${{ needs.ver.outputs.version }}
+        with:
+          image-key: ${{ secrets.MAVERICKS_VM_KEY }}
+          envs: LONGBOAT_VERSION_UNDER_TEST
+          run: sh build/vm-acceptance.sh "dist/longboat-$LONGBOAT_VERSION_UNDER_TEST.pkg" "$LONGBOAT_VERSION_UNDER_TEST"
+
   collect:
     needs: [ver, build, linux, linux-tarball]
     runs-on: macos-26
@@ -276,7 +301,7 @@ jobs:
     secrets: { SPARKLE_PRIVATE_KEY: "${{ secrets.SPARKLE_PRIVATE_KEY }}" }
 
   publish:
-    needs: [ver, collect, scan]
+    needs: [ver, collect, scan, vm-test]
     if: needs.ver.outputs.publish == 'yes'
     permissions: { contents: write }
     uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
