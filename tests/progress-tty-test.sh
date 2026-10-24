@@ -53,7 +53,9 @@ test_clock_line_fits_79_columns() {
     lb_step_start 1 '$label'; lb_step_end 1 '$label' 130 interrupted" || :
   long="$(awk 'length($0) > 79' "$T/segs")"
   [ -z "$long" ] || { echo "longer than 79 columns: $long" >&2; return 1; }
-  grep -q '^\[1/1\] 0123.*\.\.\. (0:01)$' "$T/segs" || { echo "the clock never drew: $(cat "$T/segs")" >&2; return 1; }
+  # platform: the clock prints whole seconds since a whole-second t0, so its first tick of a 2-second step can
+  #           read 0:01 or 0:02, depending on where in a second the step started and how loaded the host is
+  grep -q '^\[1/1\] 0123.*\.\.\. (0:0[12])$' "$T/segs" || { echo "the clock never drew: $(cat "$T/segs")" >&2; return 1; }
 }
 
 test_installer_bar_redraws() {
