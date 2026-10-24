@@ -2,6 +2,7 @@ fetch_sdk.sh
 sdk-pins.sh
 mavericks_fetch.sh
 stage_product.sh
+lib/vercmp.sh
 registry-lookup.sh
 product-name.sh
 product-names
