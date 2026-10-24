@@ -54,6 +54,10 @@ SDKs are fetched from third-party mirrors onto your own machine and never redist
 .Pp
 Each word has its own help:
 .Dl longboat \-\-help | longboat sdk \-\-help | longboat media \-\-help
+.Ql longboat \-\-help sdk
+and
+.Ql longboat \-\-help media
+show the same as the word's own.
 .Sh COMMANDS
 .Bl -tag -width Ds
 .It Nm Cm list
@@ -85,7 +89,7 @@ builds the package into
 instead, without root, and prints its path.
 .It Nm Cm sdk uninstall Ar version
 Remove the installed SDK, with the
-.Xr mavergreen 1
+.Ic mavergreen
 helper's
 .Cm uninstall .
 Needs root and macOS.
@@ -221,8 +225,6 @@ These still work, after one line on standard error naming the new form:
 .It longboat verify installer Ta longboat media verify
 .El
 .Sh SEE ALSO
-.Xr clang 1 ,
-.Xr mavergreen 1 ,
-.Xr packer 1
+.Xr clang 1
 .Pp
 .Lk https://github.com/Mavergreen/longboat

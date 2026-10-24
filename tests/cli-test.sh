@@ -15,8 +15,8 @@ check() {
   if "$@"; then echo "ok: $1"; else echo "FAIL: $1" >&2; fail=1; fi
 }
 
-# spec: build/package.sh's installed layout, with a stub installmedia: list prints the two lines the real one
-#       prints today, and anything else records its argv and exits 7
+# spec: build/package.sh's installed layout, with a stub installmedia: list prints $T/media-list, which starts
+#       as the two lines the real one prints today, and anything else records its argv and exits 7
 mkdir -p "$T/lb/bin" "$T/lb/libexec/longboat"
 cp "$root/src/longboat" "$T/lb/bin/longboat"
 for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh; do
@@ -24,11 +24,12 @@ for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh; do
 done
 cat > "$T/lb/libexec/longboat/installmedia" <<EOF
 #!/bin/sh
-[ "\$*" = list ] && { printf '10.6 bring-your-own\n10.9 recipe\n'; exit 0; }
+[ "\$*" = list ] && { cat "$T/media-list"; exit 0; }
 for a; do printf '%s\n' "\$a"; done > "$T/argv"
 exit 7
 EOF
 chmod 755 "$T/lb/libexec/longboat/installmedia"
+printf '10.6 bring-your-own\n10.9 recipe\n' > "$T/media-list"
 LB="$T/lb/bin/longboat"
 
 mkdir -p "$T/src/MacOSX10.9.sdk/usr/include" "$T/src/MacOSX10.9.sdk/usr/lib" "$T/served" "$T/linux"
@@ -75,6 +76,23 @@ test_list_fails_when_installmedia_is_missing() {
     || { echo "list without installmedia exited $rc: $(cat "$T/err")" >&2; return 1; }
 }
 
+test_list_fails_on_a_broken_shipyard_copy() {
+  mkdir -p "$T/empty-shipyard"
+  rc=0
+  LONGBOAT_SHIPYARD_DIR="$T/empty-shipyard" sh "$LB" list >"$T/out" 2>"$T/err" || rc=$?
+  [ "$rc" -eq 1 ] && [ ! -s "$T/out" ] && [ -s "$T/err" ] \
+    || { echo "list with an empty shipyard copy exited $rc, stdout '$(cat "$T/out")'" >&2; return 1; }
+}
+
+# spec: src/longboat lb_list -- a media kind longboat does not know is a broken install, not a disc to bring
+test_list_refuses_an_unknown_media_kind() {
+  printf '10.6 bring-your-own\n10.7 frob\n' > "$T/media-list"
+  lb list
+  printf '10.6 bring-your-own\n10.9 recipe\n' > "$T/media-list"
+  [ "$rc" -eq 1 ] && [ ! -s "$T/out" ] && grep -q "unknown media kind 'frob' for 10.7" "$T/err" \
+    || { echo "list with an unknown media kind exited $rc, stdout '$(cat "$T/out")', stderr '$(cat "$T/err")'" >&2; return 1; }
+}
+
 test_list_takes_no_arguments() {
   lb list 10.9
   [ "$rc" -eq 2 ] && [ ! -s "$T/out" ]
@@ -88,6 +106,21 @@ test_help_names_both_words() {
     grep -qF "$want" "$T/out" || { echo "--help does not name '$want'" >&2; return 1; }
   done
   ! grep -q 'installer' "$T/out" || { echo "--help still names an old form" >&2; return 1; }
+}
+
+# spec: src/longboat -- longboat --help <word> is longboat <word> --help; any other second word is usage
+test_help_takes_a_word() {
+  lb --help sdk
+  [ "$rc" -eq 0 ] && grep -q 'usage: longboat sdk list' "$T/out" && ! grep -q 'longboat media' "$T/out" \
+    || { echo "--help sdk exited $rc: $(cat "$T/out")" >&2; return 1; }
+  lb --help media
+  [ "$rc" -eq 7 ] && [ "$(cat "$T/argv")" = --help ] \
+    || { echo "--help media exited $rc, want installmedia --help's 7" >&2; return 1; }
+  for form in "--help bogus" "--help sdk x" "-h list"; do
+    # shellcheck disable=SC2086
+    lb $form
+    [ "$rc" -eq 2 ] && [ ! -s "$T/out" ] || { echo "longboat $form exited $rc" >&2; return 1; }
+  done
 }
 
 test_no_command_is_usage() {
@@ -135,7 +168,8 @@ test_old_install_announces_then_refuses_off_macos() {
 }
 
 for t in test_list_table test_list_without_sdks_shows_media test_list_fails_when_installmedia_is_missing \
-    test_list_takes_no_arguments test_help_names_both_words test_no_command_is_usage \
+    test_list_fails_on_a_broken_shipyard_copy test_list_refuses_an_unknown_media_kind \
+    test_list_takes_no_arguments test_help_names_both_words test_help_takes_a_word test_no_command_is_usage \
     test_old_fetch_announces_and_keeps_stdout test_old_fetch_installer_withholds_the_url \
     test_old_form_never_echoes_a_secret_in_the_version_place test_old_verify_installer_announces \
     test_old_install_announces_then_refuses_off_macos; do

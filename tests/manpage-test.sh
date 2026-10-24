@@ -59,6 +59,15 @@ test_lints_clean() {
   [ -z "$out" ] || { printf '%s\n' "$out" >&2; return 1; }
 }
 
+# spec: docs/longboat.1 SEE ALSO -- every .Xr names a page a reader's system has; mavergreen and packer have
+#       none, so the page names them as commands instead
+test_cross_references_exist() {
+  sed -n 's/^\.Xr \([^ ]*\) .*/\1/p' "$PAGE" | sort -u > "$T/xr"
+  printf '%s\n' clang curl shasum xz > "$T/known"
+  comm -23 "$T/xr" "$T/known" > "$T/unknown"
+  [ ! -s "$T/unknown" ] || { echo "the manual page cross-references pages that may not exist: $(cat "$T/unknown")" >&2; return 1; }
+}
+
 # spec: docs/longboat.1 COMPATIBILITY -- the old spellings are named there and nowhere else a reader looks
 test_docs_use_the_new_forms() {
   for d in README.md INGREDIENTS.md docs/DEVELOPING.md; do
@@ -70,7 +79,7 @@ test_docs_use_the_new_forms() {
 }
 
 for t in test_page_exists test_names_every_help_command test_has_the_reference_sections \
-    test_names_the_paths_and_old_forms test_lints_clean test_docs_use_the_new_forms; do
+    test_names_the_paths_and_old_forms test_lints_clean test_cross_references_exist test_docs_use_the_new_forms; do
   check "$t"
 done
 exit "$fail"

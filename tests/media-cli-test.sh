@@ -82,6 +82,16 @@ test_media_without_verb_is_usage() {
   done
 }
 
+# spec: src/longboat media_usage -- the usage longboat prints without running installmedia is installmedia's
+#       own synopsis, word for word, so the two copies cannot drift
+test_media_usage_is_installmedias_synopsis() {
+  sed -n '/^const synopsis = `/,/^`/p' "$root/installmedia/cmd/installmedia/main.go" \
+    | sed -e 's/^const synopsis = `//' -e 's/`$//' | tr -s ' \n' '  ' > "$T/want"
+  lb media frob
+  tr -s ' \n' '  ' < "$T/err" > "$T/got"
+  [ -s "$T/want" ] && diff "$T/want" "$T/got" >&2
+}
+
 test_media_never_runs_the_sdk_path() {
   lb media fetch 10.9 --into "$T/D"
   passed fetch 10.9 --into "$T/D" && ! grep -q 'SDK' "$T/err"
@@ -134,7 +144,7 @@ test_media_works_off_macos() {
 
 for t in test_media_fetch_execs_installmedia test_media_verify_execs_installmedia test_media_list_execs_installmedia \
     test_media_help_is_installmedias test_arguments_pass_through_intact test_media_without_verb_is_usage \
-    test_media_never_runs_the_sdk_path test_sdk_fetch_never_calls_installmedia test_a_missing_installmedia_is_named \
+    test_media_usage_is_installmedias_synopsis test_media_never_runs_the_sdk_path test_sdk_fetch_never_calls_installmedia test_a_missing_installmedia_is_named \
     test_install_off_macos_is_refused test_install_on_macos_is_not_refused test_media_works_off_macos; do
   check "$t"
 done

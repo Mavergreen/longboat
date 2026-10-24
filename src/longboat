@@ -3,7 +3,7 @@
 #   usage: longboat list                     both jobs, one row per OS X version
 #          longboat sdk list|install|uninstall|fetch ...     the sourced libraries beside this script
 #          longboat media list|fetch|verify ...              exec libexec/longboat/installmedia
-#          longboat --help | sdk --help | media --help
+#          longboat --help [sdk | media] | sdk --help | media --help
 #          the old forms (install, fetch, fetch installer, verify installer) run as their new forms
 set -eu
 SELF_PATH="$0"
@@ -33,14 +33,7 @@ LB_INSTALL_SH="$LIBEXEC/install.sh"
 
 usage() {
   echo "usage: longboat list"
-  echo "       longboat sdk list"
-  echo "       longboat sdk install <version> [--pkg-only DIR]"
-  echo "       longboat sdk uninstall <version>"
-  echo "       longboat sdk fetch <version> --into DIR"
-  echo "       longboat media list"
-  echo "       longboat media fetch <version> --into DIR [--source-recipe] [--source-file PATH]"
-  echo "                [--source-url URL [--auth-header-env NAME]] [--source-command PATH]"
-  echo "       longboat media verify <version> <image>"
+  { sdk_usage; media_usage; } | sed 's/^usage: /       /'
   echo "       longboat --help | longboat sdk --help | longboat media --help"
 }
 
@@ -58,6 +51,8 @@ See man longboat.
 EOF
 }
 
+# spec: tests/media-cli-test.sh test_media_usage_is_installmedias_synopsis -- installmedia's synopsis, word for
+#       word, so misuse can print it without running installmedia
 media_usage() {
   echo "usage: longboat media list"
   echo "       longboat media fetch <version> --into DIR [--source-recipe] [--source-file PATH]"
@@ -156,7 +151,8 @@ lb_media() {
 }
 
 # spec: tests/cli-test.sh test_list_table -- one row per version either word knows, numerically sorted;
-#       a word that cannot answer fails the whole list rather than printing half a table
+#       a word that cannot answer, or a media kind longboat does not know, fails the whole list rather than
+#       printing half a table
 lb_list() {
   _lb_sdks="$(lb_sdk_list)" || exit 1
   [ -x "$LIBEXEC/installmedia" ] || {
@@ -170,8 +166,15 @@ lb_list() {
   } | sort -t. -k1,1n -k2,2n | awk '
     !($1 in seen) { seen[$1] = 1; order[++n] = $1 }
     $2 == "sdk" { sdk[$1] = $3 }
-    $2 == "media" { media[$1] = ($3 == "recipe") ? "available" : "bring your own disc" }
+    $2 == "media" && $3 == "recipe" { media[$1] = "available"; next }
+    $2 == "media" && $3 == "bring-your-own" { media[$1] = "bring your own disc"; next }
+    $2 == "media" {
+      printf "longboat: installmedia list gave an unknown media kind '\''%s'\'' for %s\n", $3, $1 > "/dev/stderr"
+      bad = 1
+      exit 1
+    }
     END {
+      if (bad) exit 1
       printf "%-9s%-11s%s\n", "version", "sdk", "media"
       for (i = 1; i <= n; i++) {
         v = order[i]
@@ -225,8 +228,13 @@ case "${1:-}" in
     shift
     lb_media "$@" ;;
   --help|-h)
-    [ $# -eq 1 ] || { usage >&2; exit 2; }
-    help ;;
+    [ $# -le 2 ] || { usage >&2; exit 2; }
+    case "${2-}" in
+      "") [ $# -eq 1 ] || { usage >&2; exit 2; }; help ;;
+      sdk) lb_sdk --help ;;
+      media) lb_media --help ;;
+      *) usage >&2; exit 2 ;;
+    esac ;;
   *)
     usage >&2
     exit 2 ;;
