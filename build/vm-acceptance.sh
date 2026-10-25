@@ -45,6 +45,8 @@ step "sudo longboat sdk install 10.9"
 path=$(sudo "$lb" sdk install 10.9) || fail "longboat sdk install 10.9 failed"
 [ "$path" = "$sdk" ] || fail "sdk install printed '$path', want $sdk"
 [ -f "$sdk/SDKSettings.plist" ] || fail "no $sdk/SDKSettings.plist"
+printf '%s\n' '{"CanonicalName":"macosx10.9","MaximumDeploymentTarget":"10.9","Version":"10.9"}' \
+  | cmp -s - "$sdk/SDKSettings.json" || fail "$sdk/SDKSettings.json is missing or is not shipyard's"
 [ -f "$sdk/usr/include/stdio.h" ] || fail "no $sdk/usr/include/stdio.h"
 "$lb" sdk list | tee list.out
 grep -qx '10.9 sdk109 installed' list.out || fail "sdk list does not say 10.9 is installed"

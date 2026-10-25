@@ -119,6 +119,25 @@ test_fetch_extracts() {
   [ "$out" = "$T/out/MacOSX10.9.sdk" ] && [ -f "$T/out/MacOSX10.9.sdk/usr/include/stdio.h" ]
 }
 
+# spec: shipyard's fetch_sdk.sh (v1.0.544) -- the 10.9 SDK ships only SDKSettings.plist, and swiftc reads the
+#       SDK version only from SDKSettings.json, so a fetched 10.9 SDK carries shipyard's, byte for byte, and
+#       sdk install copies it into sdk109
+sdk_settings_json='{"CanonicalName":"macosx10.9","MaximumDeploymentTarget":"10.9","Version":"10.9"}'
+
+test_fetch_gives_10_9_its_sdk_settings_json() {
+  out=$(sh "$LB" sdk fetch 10.9 --into "$T/json") || return 1
+  printf '%s\n' "$sdk_settings_json" | cmp - "$out/SDKSettings.json" >&2
+}
+
+# spec: src/install.sh lb_install_build -- sdk install fetches into a cache an older longboat may have filled,
+#       before SDKSettings.json existed; the fetch must add it there too, or the rebuilt sdk109 lacks it
+test_fetch_adds_sdk_settings_json_to_an_old_cache() {
+  out=$(sh "$LB" sdk fetch 10.9 --into "$T/oldcache") || return 1
+  rm -f "$out/SDKSettings.json"
+  out=$(sh "$LB" sdk fetch 10.9 --into "$T/oldcache") || return 1
+  printf '%s\n' "$sdk_settings_json" | cmp - "$out/SDKSettings.json" >&2
+}
+
 test_fetch_mismatch_leaves_nothing() {
   if MAVERICKS_SDK_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
       sh "$LB" sdk fetch 10.9 --into "$T/bad" >/dev/null 2>&1; then
@@ -187,7 +206,8 @@ test_runs_through_symlink() {
 
 for t in test_sdk_without_verb_is_usage test_sdk_help_names_only_sdk_verbs test_sdk_unknown_version_names_sdk_versions test_list_offers_10_9 test_list_says_installed test_list_hides_unregistered test_list_fails_on_broken_shipyard \
     test_fetch_on_broken_shipyard_is_not_unknown test_help_on_stdout test_usage_error_on_stderr \
-    test_fetch_extracts test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
+    test_fetch_extracts test_fetch_gives_10_9_its_sdk_settings_json test_fetch_adds_sdk_settings_json_to_an_old_cache \
+    test_fetch_mismatch_leaves_nothing test_fetch_reuses_cache_offline \
     test_fetch_shows_its_step test_fetch_stdout_is_only_the_path_at_a_terminal test_unknown_sdk test_paths_with_spaces test_runs_through_symlink; do
   check "$t"
 done
