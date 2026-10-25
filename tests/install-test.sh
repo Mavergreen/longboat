@@ -92,6 +92,35 @@ test_pkg_payload() {
     || { echo "test_pkg_payload: manifest appcast is not empty" >&2; return 1; }
 }
 
+# spec: src/install.sh lb_install_copy -- sdk109 carries shipyard's SDKSettings.json as a real file even when
+#       fetch_sdk.sh leaves the cached SDK pristine (its default once the JSON is opt-in), and the install never
+#       opts in, since the opted-in SDK is symlinks into the cache; a stub fetch_sdk.sh around the real one
+#       strips the JSON and records the opt-in
+test_pkg_carries_sdk_settings_json_from_a_pristine_sdk() {
+  stub="$T/pristine-shipyard"
+  rm -rf "$stub" "$T/json-dist" "$T/json-cpio" "$T/json-expanded" "$T/json-payload"
+  cp -R "$LONGBOAT_SHIPYARD_DIR" "$stub"
+  cat > "$stub/fetch_sdk.sh" <<EOF
+#!/bin/sh
+echo "\${MAVERICKS_SDK_SETTINGS_JSON:-unset}" > "$T/optin-seen"
+out="\$(sh "$LONGBOAT_SHIPYARD_DIR/fetch_sdk.sh" "\$@")" || exit 1
+rm -f "\$out/SDKSettings.json"
+echo "\$out"
+EOF
+  LONGBOAT_SHIPYARD_DIR="$stub" sh "$LB" sdk install 10.9 --pkg-only "$T/json-dist" >/dev/null || return 1
+  [ "$(cat "$T/optin-seen")" = unset ] || { echo "the install opted in to the JSON sibling" >&2; return 1; }
+  pkgutil --expand "$T/json-dist/sdk109-20261012.1.pkg" "$T/json-expanded" || return 1
+  comp="$(grep -l 'dev\.mavergreen\.longboat\.sdk109' "$T"/json-expanded/*.pkg/PackageInfo | head -1)"
+  gzip -dc "$(dirname "$comp")/Payload" > "$T/json-cpio" || return 1
+  links="$(cpio -itv < "$T/json-cpio" 2>/dev/null | grep '^l' || true)"
+  [ -z "$links" ] || { echo "the sdk109 payload has symlinks: $links" >&2; return 1; }
+  mkdir -p "$T/json-payload"
+  f=./usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk/SDKSettings.json
+  ( cd "$T/json-payload" && cpio -id "$f" < "$T/json-cpio" 2>/dev/null ) || return 1
+  printf '%s\n' '{"CanonicalName":"macosx10.9","MaximumDeploymentTarget":"10.9","Version":"10.9"}' \
+    | cmp - "$T/json-payload/$f" >&2
+}
+
 test_pkg_only_shows_four_steps() {
   rm -rf "$T/sdist"
   out="$(sh "$LB" sdk install 10.9 --pkg-only "$T/sdist" 2>"$T/steperr")" || { cat "$T/steperr" >&2; return 1; }
@@ -250,7 +279,7 @@ test_old_install_form_keeps_stdout() {
     || { echo "old stdout '$old', new stdout '$new', old stderr '$(sed -n 1p "$T/olderr")'" >&2; return 1; }
 }
 
-for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload \
+for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload test_pkg_carries_sdk_settings_json_from_a_pristine_sdk \
     test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
     test_installer_failure_fails_install test_installer_success_prints_installed_path \
     test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2 \

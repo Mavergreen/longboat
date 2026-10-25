@@ -118,6 +118,7 @@ lb_sdk() {
       lb_sdk_list ;;
     fetch)
       shift
+      _lb_fetch_json=1
       lb_progress_init 1
       lb_fetch_step 1 "$@" ;;
     install)

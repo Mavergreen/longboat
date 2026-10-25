@@ -4,6 +4,8 @@
 #          lb_offered           one line per offered SDK: <version> <short> <arch> <sdkdir>;
 #                               non-zero when the copied shipyard scripts cannot answer
 #          lb_lookup <version>  the one matching line; return 1 when none matches, 3 when lb_offered fails
+#          lb_sdk_settings_json <arch>  the SDKSettings.json shipyard gives that arch's SDK; return 1 when the
+#                               SDK ships its own
 # spec: tests/fetch-test.sh -- test_list_offers_10_9, test_list_hides_unregistered: an SDK is offered
 #       when the copied sdk-pins.sh can fetch it and the copied registry has a short name for it.
 
@@ -41,4 +43,13 @@ lb_lookup() {
   _lb_hit="$(printf '%s\n' "$_lb_all" | awk -v v="$1" '$1 == v { print; exit }')"
   [ -n "$_lb_hit" ] || return 1
   printf '%s\n' "$_lb_hit"
+}
+
+# spec: tests/install-test.sh test_pkg_carries_sdk_settings_json_from_a_pristine_sdk -- shipyard's
+#       shipyard_sdk_settings_json is the one source of these bytes
+lb_sdk_settings_json() {
+  (
+    . "$LONGBOAT_SHIPYARD_DIR/sdk-pins.sh"
+    shipyard_sdk_settings_json "$1"
+  )
 }

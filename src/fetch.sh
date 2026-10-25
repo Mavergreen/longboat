@@ -22,8 +22,20 @@ lb_fetch() {
     return 2
   }
   set -- "$3" $_lb_line
-  MAVERICKS_SDK_CACHE="$1" sh "$LONGBOAT_SHIPYARD_DIR/fetch_sdk.sh" --arch "$4" >/dev/null || return 1
-  printf '%s/%s\n' "$1" "$5"
+  # spec: tests/fetch-test.sh test_fetch_opts_in_and_prints_fetch_sdks_path -- with _lb_fetch_json set (sdk
+  #       fetch), opt in to shipyard's SDKSettings.json and print the SDK fetch_sdk.sh prints, which may be a
+  #       view of symlinks into the pristine one; otherwise (sdk install, which copies the SDK into a pkg) never
+  #       opt in, whatever the caller's environment says
+  if [ -n "${_lb_fetch_json:-}" ]; then
+    _lb_sdk="$(MAVERICKS_SDK_SETTINGS_JSON=1 MAVERICKS_SDK_CACHE="$1" sh "$LONGBOAT_SHIPYARD_DIR/fetch_sdk.sh" --arch "$4")" \
+      || return 1
+  else
+    _lb_sdk="$(unset MAVERICKS_SDK_SETTINGS_JSON
+      MAVERICKS_SDK_CACHE="$1" sh "$LONGBOAT_SHIPYARD_DIR/fetch_sdk.sh" --arch "$4")" || return 1
+  fi
+  _lb_sdk="$(printf '%s\n' "$_lb_sdk" | sed -n '$p')"
+  [ -d "$_lb_sdk" ] || { echo "longboat: fetch_sdk.sh printed '$_lb_sdk', which is not a directory" >&2; return 1; }
+  printf '%s\n' "$_lb_sdk"
 }
 
 lb_fetch_step() {

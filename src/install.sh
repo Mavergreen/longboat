@@ -48,7 +48,7 @@ lb_install() {
     return 2
   }
   set -- $_lb_line
-  _lb_short="$2" _lb_sdkdir="$4"
+  _lb_short="$2" _lb_arch="$3" _lb_sdkdir="$4"
 
   if [ -z "$_lb_pkgonly" ] && [ "$(id -u)" -ne 0 ]; then
     echo "longboat: installing an SDK needs root: sudo longboat sdk install $_lb_ver" >&2
@@ -74,7 +74,7 @@ lb_install() {
   trap 'rm -rf "$_lb_work"' EXIT
   trap 'exit 1' HUP INT TERM
   _lb_rc=0
-  lb_install_build "$_lb_work" "$_lb_cache" "$_lb_ver" "$_lb_short" "$_lb_sdkdir" "$_lb_id" "$_lb_lbver" "$_lb_base" "$_lb_pkgonly" || _lb_rc=$?
+  lb_install_build "$_lb_work" "$_lb_cache" "$_lb_ver" "$_lb_short" "$_lb_sdkdir" "$_lb_id" "$_lb_lbver" "$_lb_base" "$_lb_pkgonly" "$_lb_arch" || _lb_rc=$?
   trap - EXIT HUP INT TERM
   rm -rf "$_lb_work"
   return "$_lb_rc"
@@ -88,9 +88,20 @@ lb_sdk_name() {
   esac
 }
 
+# spec: tests/install-test.sh test_pkg_carries_sdk_settings_json_from_a_pristine_sdk -- lb_install_copy <sdk>
+#       <dest> <sdkdir> <arch> copies the pristine SDK, then writes shipyard's SDKSettings.json for <arch> into
+#       the copy (swiftc reads the SDK version only from it), unless the SDK ships its own
 lb_install_copy() {
   mkdir -p "$2" || return 1
-  ditto --norsrc --noextattr --noacl "$1" "$2/$3"
+  ditto --norsrc --noextattr --noacl "$1" "$2/$3" || return 1
+  _lb_jrc=0
+  _lb_json="$(lb_sdk_settings_json "$4")" || _lb_jrc=$?
+  case "$_lb_jrc" in
+    0) printf '%s\n' "$_lb_json" > "$2/$3/SDKSettings.json" && chmod 644 "$2/$3/SDKSettings.json" ;;
+    1) return 0 ;;
+    *) echo "longboat: the shipyard scripts in $LONGBOAT_SHIPYARD_DIR cannot say what SDKSettings.json $3 needs" >&2
+       return 1 ;;
+  esac
 }
 
 lb_install_pkg() {
@@ -107,11 +118,11 @@ lb_install_floor() {
 }
 
 lb_install_build() {
-  _w="$1" _cache="$2" _ver="$3" _short="$4" _sdkdir="$5" _id="$6" _lbver="$7" _base="$8" _out="$9"
+  _w="$1" _cache="$2" _ver="$3" _short="$4" _sdkdir="$5" _id="$6" _lbver="$7" _base="$8" _out="$9" _arch="${10}"
   _sh="$LONGBOAT_SHIPYARD_DIR"
   _src="$(lb_fetch_step 1 "$_ver" --into "$_cache")" || return 1
   _dest="$_w/root/usr/local/mavergreen/$_short/SDKs"
-  lb_step_run 2 "copying the SDK" lb_install_copy "$_src" "$_dest" "$_sdkdir" || return 1
+  lb_step_run 2 "copying the SDK" lb_install_copy "$_src" "$_dest" "$_sdkdir" "$_arch" || return 1
   lb_step_run 3 "building the SDK pkg" lb_install_pkg || return 1
   lb_step_run 4 "adding the install floor" lb_install_floor || return 1
   if [ -n "$_out" ]; then
