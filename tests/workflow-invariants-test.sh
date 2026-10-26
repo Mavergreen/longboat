@@ -201,9 +201,13 @@ linux_job_smokes_the_tarball() {
   followed_by "$T/smoke" '"$lb" sdk list > "$x/sdks"' \
     'grep -qx "10.9 sdk109 available" "$x/sdks" && grep -qx "11.3 sdk113 available" "$x/sdks" || {' \
     || { echo "the tarball step must run sdk list and want 10.9 and 11.3 available" >&2; return 1; }
+  # spec: shipyard's fetch_sdk.sh (v1.0.545) -- the opted-in 10.9 SDK is a sibling carrying SDKSettings.json
   followed_by "$T/smoke" 'sdk="$("$lb" sdk fetch 10.9 --into "$RUNNER_TEMP/sdk")"' \
-    '[ "$sdk" = "$RUNNER_TEMP/sdk/MacOSX10.9.sdk" ] && [ -f "$sdk/SDKSettings.plist" ] || {' \
-    || { echo "the tarball step must run sdk fetch 10.9 and want the SDK it prints" >&2; return 1; }
+    'want="$RUNNER_TEMP/sdk/with-sdk-settings-json/MacOSX10.9.sdk"' \
+    || { echo "the tarball step must run sdk fetch 10.9 and want the opted-in SDK's path" >&2; return 1; }
+  followed_by "$T/smoke" 'want="$RUNNER_TEMP/sdk/with-sdk-settings-json/MacOSX10.9.sdk"' \
+    '[ "$sdk" = "$want" ] && [ -f "$sdk/SDKSettings.plist" ] && [ -f "$sdk/SDKSettings.json" ] || {' \
+    || { echo "the tarball step must want the SDK it prints, holding SDKSettings.plist and SDKSettings.json" >&2; return 1; }
 }
 
 reconcile_dispatches_a_declared_input() {

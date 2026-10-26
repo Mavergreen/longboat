@@ -114,14 +114,17 @@ test_sdk_unknown_version_names_sdk_versions() {
     || { echo "sdk fetch 10.6 exited $rc: $(cat "$T/err6")" >&2; return 1; }
 }
 
+# spec: shipyard's fetch_sdk.sh (v1.0.545) -- with the opt-in, the 10.9 SDK sdk fetch prints is the sibling
+#       DIR/with-sdk-settings-json/MacOSX10.9.sdk, whose files link into the pristine DIR/MacOSX10.9.sdk
 test_fetch_extracts() {
   out=$(sh "$LB" sdk fetch 10.9 --into "$T/out")
-  [ "$out" = "$T/out/MacOSX10.9.sdk" ] && [ -f "$T/out/MacOSX10.9.sdk/usr/include/stdio.h" ]
+  [ "$out" = "$T/out/with-sdk-settings-json/MacOSX10.9.sdk" ] && [ -f "$out/usr/include/stdio.h" ] \
+    && [ -f "$T/out/MacOSX10.9.sdk/usr/include/stdio.h" ]
 }
 
-# spec: shipyard's fetch_sdk.sh (v1.0.544) -- the 10.9 SDK ships only SDKSettings.plist, and swiftc reads the
-#       SDK version only from SDKSettings.json, so a fetched 10.9 SDK carries shipyard's, byte for byte, and
-#       sdk install copies it into sdk109
+# spec: shipyard's fetch_sdk.sh (v1.0.545) -- the 10.9 SDK ships only SDKSettings.plist, and swiftc reads the
+#       SDK version only from SDKSettings.json, so the 10.9 SDK sdk fetch prints carries shipyard's, byte for
+#       byte (sdk install writes the same bytes into sdk109 itself)
 sdk_settings_json='{"CanonicalName":"macosx10.9","MaximumDeploymentTarget":"10.9","Version":"10.9"}'
 
 test_fetch_gives_10_9_its_sdk_settings_json() {
@@ -129,8 +132,8 @@ test_fetch_gives_10_9_its_sdk_settings_json() {
   printf '%s\n' "$sdk_settings_json" | cmp - "$out/SDKSettings.json" >&2
 }
 
-# spec: src/install.sh lb_install_build -- sdk install fetches into a cache an older longboat may have filled,
-#       before SDKSettings.json existed; the fetch must add it there too, or the rebuilt sdk109 lacks it
+# spec: src/fetch.sh lb_fetch -- DIR may hold what an older longboat fetched, without SDKSettings.json; a
+#       fetch into it still prints an SDK carrying it
 test_fetch_adds_sdk_settings_json_to_an_old_cache() {
   out=$(sh "$LB" sdk fetch 10.9 --into "$T/oldcache") || return 1
   rm -f "$out/SDKSettings.json"
@@ -178,7 +181,7 @@ test_fetch_reuses_cache_offline() {
 test_fetch_shows_its_step() {
   rm -rf "$T/step"
   out=$(sh "$LB" sdk fetch 10.9 --into "$T/step" 2>"$T/steperr")
-  [ "$out" = "$T/step/MacOSX10.9.sdk" ] || return 1
+  [ "$out" = "$T/step/with-sdk-settings-json/MacOSX10.9.sdk" ] || return 1
   grep -q '^\[1/1\] fetching the 10\.9 SDK\.\.\.$' "$T/steperr" \
     && grep -q '^\[1/1\] fetching the 10\.9 SDK: done (' "$T/steperr" \
     || { cat "$T/steperr" >&2; return 1; }
@@ -193,7 +196,7 @@ test_fetch_stdout_is_only_the_path_at_a_terminal() {
   # platform: BSD script(1) gives the command a terminal on stderr; GNU script has other flags.
   script -q /dev/null sh -c 'p="$(sh "$1" sdk fetch 10.9 --into "$2")"; printf "PATH=%s\n" "$p"' sh "$LB" "$T/tty" >"$T/ttyout" 2>&1 || true
   tr -d '\r' < "$T/ttyout" > "$T/ttyout.clean"
-  grep -qx "PATH=$T/tty/MacOSX10.9.sdk" "$T/ttyout.clean" || { cat "$T/ttyout.clean" >&2; return 1; }
+  grep -qx "PATH=$T/tty/with-sdk-settings-json/MacOSX10.9.sdk" "$T/ttyout.clean" || { cat "$T/ttyout.clean" >&2; return 1; }
   # spec: src/progress.sh lb_step_end -- only at a terminal is the step's line redrawn with a CR; in a log
   #       script(1)'s CR comes just before a newline, never before the next line's text.
   grep -q "$(printf '\r')\\[1/1\\] fetching the 10\\.9 SDK: done (" "$T/ttyout" \
@@ -211,7 +214,7 @@ test_unknown_sdk() {
 test_paths_with_spaces() {
   mkdir -p "$T/tmp space"
   out=$(TMPDIR="$T/tmp space" sh "$LB" sdk fetch 10.9 --into "$T/with space")
-  [ "$out" = "$T/with space/MacOSX10.9.sdk" ] && [ -f "$out/usr/include/stdio.h" ]
+  [ "$out" = "$T/with space/with-sdk-settings-json/MacOSX10.9.sdk" ] && [ -f "$out/usr/include/stdio.h" ]
 }
 
 test_runs_through_symlink() {

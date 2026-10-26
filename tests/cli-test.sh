@@ -134,7 +134,7 @@ test_no_command_is_usage() {
 
 test_old_fetch_announces_and_keeps_stdout() {
   lb fetch 10.9 --into "$T/old"
-  [ "$rc" -eq 0 ] && [ "$(cat "$T/out")" = "$T/old/MacOSX10.9.sdk" ] \
+  [ "$rc" -eq 0 ] && [ "$(cat "$T/out")" = "$T/old/with-sdk-settings-json/MacOSX10.9.sdk" ] \
     && [ "$(sed -n 1p "$T/err")" = "longboat: 'longboat fetch 10.9' is now 'longboat sdk fetch 10.9'" ] \
     || { echo "exit $rc, stdout '$(cat "$T/out")', stderr '$(cat "$T/err")'" >&2; return 1; }
 }

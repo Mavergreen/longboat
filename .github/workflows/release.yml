@@ -209,8 +209,9 @@ jobs:
           grep -qx "10.9 sdk109 available" "$x/sdks" && grep -qx "11.3 sdk113 available" "$x/sdks" \
             || { echo "::error::sdk list does not offer 10.9 and 11.3"; exit 1; }
           sdk="$("$lb" sdk fetch 10.9 --into "$RUNNER_TEMP/sdk")"
-          [ "$sdk" = "$RUNNER_TEMP/sdk/MacOSX10.9.sdk" ] && [ -f "$sdk/SDKSettings.plist" ] \
-            || { echo "::error::sdk fetch 10.9 printed '$sdk', want $RUNNER_TEMP/sdk/MacOSX10.9.sdk holding SDKSettings.plist"; exit 1; }
+          want="$RUNNER_TEMP/sdk/with-sdk-settings-json/MacOSX10.9.sdk"
+          [ "$sdk" = "$want" ] && [ -f "$sdk/SDKSettings.plist" ] && [ -f "$sdk/SDKSettings.json" ] \
+            || { echo "::error::sdk fetch 10.9 printed '$sdk', want $want holding SDKSettings.plist and SDKSettings.json"; exit 1; }
           "$lb" media list > "$x/media"
           grep -qx "10.6 bring-your-own" "$x/media" && grep -qx "10.9 recipe" "$x/media" \
             || { echo "::error::media list does not say 10.6 bring-your-own and 10.9 recipe"; exit 1; }

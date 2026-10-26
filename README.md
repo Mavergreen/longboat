@@ -27,7 +27,8 @@ clang -isysroot /usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk -mmacosx-versio
 `/usr/local/mavergreen/sdk113/SDKs/MacOSX11.3.sdk`. To remove one, run `sudo longboat sdk uninstall 10.9`.
 
 `longboat sdk fetch 10.9 --into DIR` puts the SDK in a directory of your own instead, without root and
-without installing anything.
+without installing anything. Use the path it prints: for 10.9 that's
+`DIR/with-sdk-settings-json/MacOSX10.9.sdk`, which adds the `SDKSettings.json` swiftc needs.
 
 ## Getting install media
 

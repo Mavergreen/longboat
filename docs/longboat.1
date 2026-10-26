@@ -97,6 +97,13 @@ Needs root and macOS.
 Put the version's SDK in
 .Ar DIR ,
 checked against its SHA-256, without root and without installing it, and print its path.
+Use the printed path: for 10.9 it is
+.Ar DIR Ns Pa /with-sdk-settings-json/MacOSX10.9.sdk ,
+which links into the SDK as shipped and adds the
+.Pa SDKSettings.json
+that
+.Xr clang 1
+and swiftc read.
 A second run with the same
 .Ar DIR
 uses what is there.
