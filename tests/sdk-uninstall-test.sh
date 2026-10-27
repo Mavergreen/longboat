@@ -35,7 +35,8 @@ check() {
 MG="$T/root/usr/local/mavergreen"
 installed() { mkdir -p "$MG/sdk109/SDKs/MacOSX10.9.sdk" && : > "$MG/sdk109/mavergreen.plist"; }
 not_installed() { rm -rf "$MG/sdk109"; }
-# product <name> <link target>: an installed product whose SDKs is a link to <link target>, as clang-22's is
+# spec: src/uninstall.sh lb_sdk_dependents -- product <name> <link target> installs a product whose SDKs is a
+#       link to <link target>, as clang-22's is
 product() { mkdir -p "$MG/$1" && : > "$MG/$1/mavergreen.plist" && rm -f "$MG/$1/SDKs" && ln -s "$2" "$MG/$1/SDKs"; }
 
 # platform: the macOS cases stand in a Darwin uname after $1, so they run on a Linux host too, and a Linux uname
