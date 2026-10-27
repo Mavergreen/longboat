@@ -92,6 +92,11 @@ Remove the installed SDK, with the
 .Ic mavergreen
 helper's
 .Cm uninstall .
+Refuses while another installed product, such as a toolchain whose
+.Pa SDKs
+links into
+.Pa sdk109 ,
+links into the SDK, and names the products to remove first.
 Needs root and macOS.
 .It Nm Cm sdk fetch Ar version Fl \-into Ar DIR
 Put the version's SDK in
