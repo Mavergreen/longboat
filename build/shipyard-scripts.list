@@ -12,3 +12,7 @@ build-base-component.sh
 build_component_pkg.sh
 mavergreen.sh
 templates/base-postinstall.sh
+fetch_stevedore.sh
+stevedore.pin
+fetch-release-pkg.sh
+source-date-epoch.sh

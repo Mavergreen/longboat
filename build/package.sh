@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- shipyard's staging and packaging scripts run pkgbuild, productbuild and PlistBuddy
+# platform: macOS-only -- shipyard's staging and packaging scripts run stevedore, fetched for macOS
 #   usage: package.sh     writes dist/longboat-<VER>.pkg and dist/build-info.txt; VER is the first line of ./VERSION.
 #          It stages the pkg's tree in $BUILD_ROOT/longboat-stage/root and keeps it there afterwards. It
 #          needs build/build-updater.sh's updater and build/build-installmedia.sh's darwin installmedia.
@@ -46,6 +46,10 @@ cp docs/longboat.1 "$P/share/man/man1/longboat.1"
 cp "$IM" "$LIBEXEC/installmedia"
 chmod 755 "$LIBEXEC/installmedia"
 printf '%s\n' "$VER" > "$LIBEXEC/VERSION"
+# spec: src/install.sh lb_own_epoch -- sdk install stamps the SDK pkg with this, as an owner's Mac has no git
+EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
+case "$EPOCH" in ''|*[!0-9]*) echo "package: no SOURCE_DATE_EPOCH and no git commit time to stamp SDK pkgs with" >&2; exit 1 ;; esac
+printf '%s\n' "$EPOCH" > "$LIBEXEC/SOURCE_DATE_EPOCH"
 printf '%s\n' "${SHIPYARD#v}" > "$LIBEXEC/SHIPYARD_VERSION"
 sh build/shipyard-scripts.sh extract "$SHIPYARD" "$LIBEXEC/shipyard"
 

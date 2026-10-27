@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- builds real pkgs with pkgbuild/productbuild and reads them with pkgutil
+# platform: macOS-only -- builds real pkgs through shipyard's stevedore seams and reads them with pkgutil
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 LB="$root/src/longboat"
@@ -41,6 +41,24 @@ export MAVERGREEN_PRODUCT_NAMES MAVERICKS_SDK_URL MAVERICKS_SDK_SHA256 LONGBOAT_
 
 check() {
   if "$@"; then echo "ok: $1"; else echo "FAIL: $1" >&2; fail=1; fi
+}
+
+# spec: build/shipyard-scripts.list -- the copy sdk install runs holds every file its scripts call by
+#       "$SELF/<file>" or "$(dirname "$0")/<file>", except a call sdk install never reaches:
+#       ../MavericksShipyardConfigVersion.cmake is read only when it exists; shipyard-version.sh only when
+#       set_install_floor.sh gets no --base-version, and install.sh always passes one; stage_updater.sh only
+#       for --updater-app, which sdk install never passes
+test_shipyard_copy_holds_what_it_calls() {
+  grep . "$root/build/shipyard-scripts.list" > "$T/listed"
+  while IFS= read -r f; do
+    grep -o -E '(\$SELF|\$\(dirname "\$0"\))/[A-Za-z0-9_./-]+' "$LONGBOAT_SHIPYARD_DIR/$f" \
+      | sed "s|^[^/]*/||; s|^|$f |" || true
+  done < "$T/listed" | sort -u > "$T/calls"
+  while read -r f c; do
+    case "$c" in ../MavericksShipyardConfigVersion.cmake|shipyard-version.sh|stage_updater.sh) continue ;; esac
+    grep -qxF "$c" "$T/listed" || echo "$f calls $c"
+  done < "$T/calls" > "$T/missing"
+  [ ! -s "$T/missing" ] || { echo "build/shipyard-scripts.list lacks:" >&2; cat "$T/missing" >&2; return 1; }
 }
 
 built() { [ -f "$T/dist/sdk109-20261012.1.pkg" ] || sh "$LB" sdk install 10.9 --pkg-only "$T/dist" >/dev/null; }
@@ -220,6 +238,27 @@ test_root_install_failure_leaves_installed_sdk() {
   [ -z "$(ls -A "$T/tmp space")" ]
 }
 
+# spec: src/install.sh lb_own_epoch -- shipyard's pkg seams stamp every file with SOURCE_DATE_EPOCH, else the
+#       commit time of the git repo at the current directory; sdk install runs wherever the owner stands, so
+#       it stamps with Longboat's own time (beside install.sh once installed, its checkout's HEAD here), never
+#       the time of whatever repo the owner is in
+test_pkg_stamps_longboats_time_not_the_cwds() {
+  rm -rf "$T/elsewhere" "$T/edist" "$T/ex" "$T/ep"
+  mkdir -p "$T/elsewhere"
+  ( cd "$T/elsewhere" && git init -q && GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 \
+      git -c user.name=t -c user.email=t@t commit -q --allow-empty -m t ) || return 1
+  [ "$(git -C "$T/elsewhere" log -1 --format=%ct)" = 1000000000 ] || return 1
+  want="$(git -C "$root" log -1 --format=%ct)"
+  ( cd "$T/elsewhere" && env -u SOURCE_DATE_EPOCH sh "$LB" sdk install 10.9 --pkg-only "$T/edist" >/dev/null ) \
+    || return 1
+  pkgutil --expand "$T/edist/sdk109-20261012.1.pkg" "$T/ex" || return 1
+  comp="$(grep -l 'dev\.mavergreen\.longboat\.sdk109' "$T"/ex/*.pkg/PackageInfo | head -1)"
+  mkdir -p "$T/ep"
+  ( cd "$T/ep" && gzip -dc "$(dirname "$comp")/Payload" | cpio -idm --quiet ) 2>/dev/null || return 1
+  got="$(stat -f %m "$T/ep/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk/usr/include/stdio.h")"
+  [ "$got" = "$want" ] || { echo "sdk109's files are stamped $got, want Longboat's commit time $want" >&2; return 1; }
+}
+
 test_missing_version_exits_2() {
   rc=0
   env -u LONGBOAT_VERSION sh "$LB" sdk install 10.9 --pkg-only "$T/nover" >/dev/null 2>&1 || rc=$?
@@ -279,10 +318,10 @@ test_old_install_form_keeps_stdout() {
     || { echo "old stdout '$old', new stdout '$new', old stderr '$(sed -n 1p "$T/olderr")'" >&2; return 1; }
 }
 
-for t in test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload test_pkg_carries_sdk_settings_json_from_a_pristine_sdk \
+for t in test_shipyard_copy_holds_what_it_calls test_install_needs_root test_pkg_only_builds_conformant_pkg test_pkg_payload test_pkg_carries_sdk_settings_json_from_a_pristine_sdk \
     test_pkg_only_shows_four_steps test_failing_step_shows_its_output \
     test_installer_failure_fails_install test_installer_success_prints_installed_path \
-    test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2 \
+    test_home_untouched test_install_failure_leaves_nothing test_root_install_failure_leaves_installed_sdk test_missing_version_exits_2 test_pkg_stamps_longboats_time_not_the_cwds \
     test_sdk_name test_pkg_title_10_9 test_pkg_only_builds_11_3 test_old_install_form_keeps_stdout; do
   check "$t"
 done

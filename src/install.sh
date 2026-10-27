@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- ditto stages the SDK, and the copied shipyard scripts run pkgbuild, productbuild and installer
+# platform: macOS-only -- ditto stages the SDK, and the copied shipyard scripts build the pkg with stevedore, and installer installs it
 #   usage: . install.sh     (sourced; needs sdks.sh, progress.sh, fetch.sh and LONGBOAT_SHIPYARD_DIR)
 #          lb_install <version> [--pkg-only DIR]
 # spec: tests/install-test.sh -- test_install_needs_root, test_home_untouched, test_pkg_only_builds_conformant_pkg:
@@ -17,6 +17,20 @@ lb_own_version() {
   else
     return 1
   fi
+}
+
+# spec: tests/install-test.sh test_pkg_stamps_longboats_time_not_the_cwds -- the time sdk install stamps the
+#       pkg with: the SOURCE_DATE_EPOCH file package.sh writes beside install.sh, else the commit time of the
+#       checkout install.sh is in; never the repo at the current directory
+lb_own_epoch() {
+  _lb_d="$(lb_selfdir)"
+  if [ -f "$_lb_d/SOURCE_DATE_EPOCH" ]; then
+    _lb_e="$(sed -n '1p' "$_lb_d/SOURCE_DATE_EPOCH" | tr -d ' \t')"
+  else
+    _lb_e="$(cd "$_lb_d" && git log -1 --format=%ct 2>/dev/null)" || _lb_e=""
+  fi
+  case "$_lb_e" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$_lb_e"
 }
 
 lb_shipyard_version() {
@@ -62,6 +76,13 @@ lb_install() {
     echo "longboat: cannot find the pinned shipyard version (SHIPYARD_VERSION)" >&2
     return 2
   }
+  if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    SOURCE_DATE_EPOCH="$(lb_own_epoch)" || {
+      echo "longboat: no SOURCE_DATE_EPOCH file beside install.sh and SOURCE_DATE_EPOCH is not set; cannot stamp the pkg" >&2
+      return 2
+    }
+  fi
+  export SOURCE_DATE_EPOCH
   _lb_id="$(sh "$LONGBOAT_SHIPYARD_DIR/product-name.sh" identifier "$_lb_short")" || return 1
 
   if [ -n "$_lb_pkgonly" ]; then
@@ -69,6 +90,10 @@ lb_install() {
   else
     _lb_cache="${LONGBOAT_ROOT:-}/usr/local/mavergreen/var/longboat"
   fi
+  # spec: tests/install-test.sh test_home_untouched -- shipyard's pkg seams fetch stevedore into
+  #       $HOME/Library/Caches unless told otherwise; it goes in the cache with the SDK instead
+  STEVEDORE_CACHE="${STEVEDORE_CACHE:-$_lb_cache/stevedore}"
+  export STEVEDORE_CACHE
   if [ -n "$_lb_pkgonly" ]; then lb_progress_init 4; else lb_progress_init 5; fi
   _lb_work="$(mktemp -d "${TMPDIR:-/tmp}/longboat-install.XXXXXX")" || return 1
   trap 'rm -rf "$_lb_work"' EXIT

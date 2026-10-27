@@ -28,7 +28,7 @@ check() {
 
 test_payload_has_cli() {
   [ -f "$L/bin/longboat" ] || return 1
-  for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh VERSION; do
+  for f in sdks.sh progress.sh fetch.sh install.sh uninstall.sh VERSION SOURCE_DATE_EPOCH; do
     [ -f "$L/libexec/longboat/$f" ] || return 1
   done
   [ "$(cat "$L/libexec/longboat/VERSION")" = "$ver" ]
@@ -104,9 +104,12 @@ test_shipped_set_installs() {
   COPYFILE_DISABLE=1 tar cJf "$T/sdk/served/MacOSX10.9.sdk.tar.xz" -C "$T/sdk/src" MacOSX10.9.sdk
   sha=$(shasum -a 256 < "$T/sdk/served/MacOSX10.9.sdk.tar.xz" | cut -c1-64)
   out="$T/sdk/dist with space"
-  env -u LONGBOAT_SHIPYARD_DIR -u LONGBOAT_VERSION -u MAVERGREEN_PRODUCT_NAMES HOME="$T/sdk/home" \
+  # spec: src/install.sh lb_own_epoch -- the shipped set stamps the pkg with no git and no SOURCE_DATE_EPOCH,
+  #       as on an owner's Mac outside any repo
+  ( cd "$T/sdk/home" && env -u LONGBOAT_SHIPYARD_DIR -u LONGBOAT_VERSION -u MAVERGREEN_PRODUCT_NAMES \
+    -u SOURCE_DATE_EPOCH HOME="$T/sdk/home" \
     MAVERICKS_SDK_URL="file://$T/sdk/served/MacOSX10.9.sdk.tar.xz" MAVERICKS_SDK_SHA256="$sha" \
-    sh "$L/bin/longboat" install 10.9 --pkg-only "$out" > "$T/sdk/out" 2> "$T/sdk/err" \
+    sh "$L/bin/longboat" install 10.9 --pkg-only "$out" ) > "$T/sdk/out" 2> "$T/sdk/err" \
     || { cat "$T/sdk/err" >&2; echo "the shipped scripts alone could not build an SDK pkg" >&2; return 1; }
   [ "$(cat "$T/sdk/out")" = "$out/sdk109-$ver.pkg" ] && [ -f "$out/sdk109-$ver.pkg" ] || return 1
   facts="$(sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" "$out" "$ver" "$root")" || return 1

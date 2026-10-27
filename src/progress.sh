@@ -80,7 +80,7 @@ _lb_step_clock() {
 # spec: tests/progress-tty-test.sh test_interrupt_stops_a_functions_children,
 #       test_interrupt_stops_a_scripts_children -- a step's command starts with INT ignored (it is an
 #       async list) and so does everything it starts, so a terminal's Ctrl-C reaches none of it.
-#       Killing only the top would orphan the workers (ditto, pkgbuild) to write on into a work dir
+#       Killing only the top would orphan the workers (ditto, stevedore) to write on into a work dir
 #       install is removing. The tree is stopped top down first, so nothing in it can fork or be
 #       reparented out of pgrep's sight, then terminated and continued.
 _lb_tree_freeze() {
